@@ -17,24 +17,26 @@ sensors: jolts, GPS ─▶ (confirmer)   map (Leaflet, tiles from the app's own 
 
 The full flowchart and architecture, every box and arrow mapped to the code that implements it and the test that checks it: **[`docs/flowchart.md`](docs/flowchart.md)**.
 
-## Status: what runs today, and what is a stub
+## Status: what works today, and what is still open
 
-**Runs and is tested**
+**Works, and is checked** by 330+ automated tests and by `npm run rehearse` (two emulated phones in Chromium against the real hub and the real model, see [`DEMO.md`](DEMO.md)):
 
-* `shared/`: the hazard record, `mergeHazard` (commutative, associative, idempotent), expiry, the WebSocket protocol. Property-style tests with seeded random cases and replica-convergence simulations.
-* `hub/`: HTTPS + WebSocket server, local certificate authority (mkcert if installed), in-memory store with a JSON snapshot every 10 s, expiry sweep, rate limits, and a fake-device tool. Integration tests run over real TLS.
-* `app/`: Drive, Map and Debug screens; camera → detector → confirmer pipeline; DeviceMotion jolts and GPS; IndexedDB store; reconnecting sync client; Leaflet map; service worker; Demo Mode.
-  Exercised in headless Chromium with a fake camera: hazards from the fake device show up on the map, two tabs stay in sync, and a reload with the network cut still opens the app.
-* The real inference path: onnxruntime-web (WebGPU, falling back to WASM), 320 px letterbox, YOLOv8 output decoding, class-aware NMS written in TypeScript. Checked against Ultralytics' own NMS on an **untrained** 3-class YOLOv8n export (identical detections, boxes within 0.005 px).
-* `model/`: converters, export-and-verify script, evaluation script, Colab notebook outline. Python unit tests pass.
+* **Detection on the phone.** `app/public/models/lubak.onnx` is a YOLOv8n trained on public pothole and crack photos; how it was trained and what it measured on held-out photos is in [`model/RESULTS.md`](model/RESULTS.md) (MODEL_SUMMARY).
+  onnxruntime-web runs it on WebGPU, or WASM where WebGPU is missing; a parity test proves the app decodes the model's raw output exactly as Ultralytics does.
+* **Confirmation.** 3 consecutive frames above a per-class threshold chosen on validation data, a usable GPS fix, and a confidence boost when the accelerometer feels the bump.
+* **Sharing without internet.** IndexedDB store with an offline queue; the laptop hub (HTTPS + WebSocket) merges and relays hazards, keeps a snapshot, expires old ones; an optional event PIN keeps strangers on the hotspot out.
+* **Warning other riders.** A phone approaching a hazard that any phone reported gets **"Pothole ahead · 40 m · seen by 2 phones"**, two beeps and a vibration, about 6 s before it.
+* **Offline map.** Real OpenStreetMap tiles of Antipolo (via Overture Maps) are part of the app and cached on the phone; the demo loop follows real streets.
+* **Offline-first PWA.** The service worker caches the app, the model, the onnxruntime runtime and the tiles: after one visit it works in airplane mode.
+* **Demo Mode, fake devices, CI.** A scripted drive through the real pipeline for the stage, `npm run fake-device` for load, and GitHub Actions running tests, build and the rehearsal on every push.
 
-**Stub, placeholder or not done**
+**Still open** (these need people, phones and roads, not more code):
 
-* **There is no trained model.** `app/public/models/lubak.onnx` does not exist and **this repository contains no accuracy figure of any kind**. Until the file exists the app uses the `MockDetector` (random boxes) and shows a red **MOCK** badge on the Drive screen. Never commit a test model under that name.
-* Confirmer settings are **placeholders chosen without data**: per-class thresholds (pothole 0.45, crack 0.40, flooded 0.50), jolt threshold 4 m/s², jolt boost +0.15, 3 consecutive frames, 5 s cooldown. Tune them with real footage.
-* Map tiles: only a generator for blank hatched placeholder tiles exists. Real offline tiles for the demo area still have to be rendered ([`app/public/tiles/README.md`](app/public/tiles/README.md)).
-* **Not yet tried on a physical phone, camera mount, hotspot, GPS, or a real GPU's WebGPU**, and not on iOS at all. Android and iPhone instructions below are written from the platforms' documented behaviour and the helper page; menu names vary. Expect to adjust.
-* No authentication on the hub, no way to mark a hazard as repaired (hazards only expire), no audio alerts (a short vibration on confirmation).
+* **Flooded roads are not detected.** No labelled flood images were available, so the model has the class but never reports it (0 detections in validation and test). The class stays in the contract, the map and Demo Mode.
+* The model has **never seen a Philippine road or the phone mount**: its numbers are on public photos. A few hundred labelled frames from the real mount will matter more than anything else ([`model/README.md`](model/README.md)).
+* **Not yet tried on a physical phone**, real GPS, motion sensors, a hotspot, a phone GPU's WebGPU, or iOS. The rehearsal emulates Android phones in Chromium; it does not replace a ride.
+* The jolt threshold (4 m/s²) and boost (+0.15) are untested placeholders: there was no accelerometer data.
+* A hazard cannot be marked as repaired; it expires (floods 6 h, potholes and cracks 21 days).
 
 ## Repository layout
 
@@ -45,7 +47,7 @@ app/      Vite + plain TypeScript PWA: camera, detector, confirmer, sensors, sto
 model/    YOLOv8n training notebook, dataset conversion, ONNX export + verification, evaluation. Start here: model/README.md
 test/     the flowchart as a test: the real app code talking to the real hub, in one process
 docs/     flowchart.md: the flowchart and the architecture as diagrams, mapped to code and tests
-scripts/  dev.mjs (hub + app dev server together)
+scripts/  dev.mjs (hub + app dev server together), demo.mjs (npm run demo), rehearse.ts (npm run rehearse: the two-phone rehearsal)
 ```
 
 ## Quick start on one computer (no phone needed)
@@ -61,7 +63,7 @@ npm run hub            # HTTPS + WebSocket hub: makes a certificate on first run
 npm run fake-device    # in a second terminal: fake phones driving the demo loop on real streets in Antipolo
 ```
 
-**Shortcut: `npm run demo`** builds the app, adds placeholder map tiles if you have none, and starts the hub with an empty store. The rehearsal script is in [`DEMO.md`](DEMO.md).
+**Shortcut: `npm run demo`** builds the app and starts the hub with an empty store (add `-- --pin <code>` for an event PIN). **`npm run rehearse`** runs the whole stage demo with two emulated phones and writes `.rehearsal/report.md`. The runbook is [`DEMO.md`](DEMO.md).
 
 Open **https://localhost:8443** and look at the Map tab: hazards appear as the fake device reports them. Your browser will warn about the certificate until you trust the hub's CA
 (see below); on this computer you can click through for a quick look, but the service worker (offline mode) only registers once the certificate is trusted.
@@ -172,7 +174,7 @@ The script has ten encounters: eight should confirm and two must be rejected (a 
 | `--pin <code>` | `HUB_PIN` | none: anyone on the network can sync. With a PIN (4-32 letters, digits, `-`, `_`) the hub prints `https://<ip>:8443/?pin=<code>`; a phone opens that once and the app remembers it (Debug > Hub PIN to change it). Without it, the phone says "The hub needs the event PIN" |
 | `--quiet`, `--verbose` | `HUB_LOG` | info |
 
-**Fake device** (`npm run fake-device -- ...`): `--url`, `--ca`, `--rate <hazards/s>`, `--devices <n>`, `--spots <n>`, `--jitter <m>`, `--center <lat,lon>`, `--seed`, `--count`. It verifies the hub's certificate against `hub/.certs/lubak-hub-ca.crt`; `--insecure` exists but is opt-in and warns.
+**Fake device** (`npm run fake-device -- ...`): `--url`, `--ca`, `--pin <code>` (or `HUB_PIN`), `--rate <hazards/s>`, `--devices <n>`, `--spots <n>`, `--jitter <m>`, `--center <lat,lon>`, `--seed`, `--count`. It verifies the hub's certificate against `hub/.certs/lubak-hub-ca.crt`; `--insecure` exists but is opt-in and warns.
 
 Nothing in this repository is secret. TLS private keys are generated on the laptop into `hub/.certs/` (git-ignored); the app has no API keys. Do not commit that folder, `hub/data/`, `.env*` files or `model/work/`.
 
@@ -203,35 +205,36 @@ First: (1) render real offline tiles for the demo area (QGIS recipe in `app/publ
 
 **Before the day (with internet)**
 
-- [ ] `npm install`, `npm test` and `npm run typecheck` are green on the demo laptop.
-- [ ] `app/public/models/lubak.onnx` is there and `python model/export_onnx.py --verify app/public/models/lubak.onnx` prints OK. Debug will show `ONNX webgpu` or `ONNX wasm`, not MOCK.
-- [ ] Real tiles for the route are in `app/public/tiles/` (not the placeholders), with the right attribution.
-- [ ] `npm run build`; the *precache N entries* line is a size you can live with on the hotspot.
-- [ ] Full rehearsal on the real hotspot with at least two phones, including a hub restart.
-- [ ] A recorded video of Demo Mode working, as a fallback. Charged phones, power banks, secure mounts.
+- [ ] `npm install`, `npm test` and `npm run typecheck` are green on the demo laptop, and **`npm run rehearse` passes every check** (two emulated phones, the real hub and model: [`DEMO.md`](DEMO.md)).
+- [ ] `python model/export_onnx.py --verify app/public/models/lubak.onnx` prints OK. Debug will show `ONNX webgpu` or `ONNX wasm`, not MOCK.
+- [ ] If the demo is somewhere other than Antipolo: render tiles for it and trace a demo loop there ([`app/public/tiles/README.md`](app/public/tiles/README.md)).
+- [ ] `npm run build`; the *precache N entries* line (about 52 MB with the model, ~25 MB over the wire thanks to gzip) is fine for the hotspot.
+- [ ] Full rehearsal on the real hotspot with at least two phones, including a hub restart and a "Pothole ahead" warning on the second phone.
+- [ ] Fallback: Demo Mode works, and [`docs/demo-mode-fallback.webm`](docs/demo-mode-fallback.webm) plays. Charged phones, power banks, secure mounts.
 
 **At the venue**
 
 - [ ] Uplink off (unplug, or disable the laptop's internet). Phones: **mobile data off**.
-- [ ] Start the hub (`npm run hub -- --fresh`), note the URL, and **do not toggle the laptop's Wi-Fi** (the address is part of the app's identity).
-- [ ] Each phone: join the network → `http://<ip>:8080` → install the certificate → `https://<ip>:8443` opens without a warning → Install app / Add to Home Screen.
+- [ ] Start the hub (`npm run hub -- --fresh --pin <event-pin>`), note the URL, and **do not toggle the laptop's Wi-Fi** (the address is part of the app's identity).
+- [ ] Each phone: join the network → `http://<ip>:8080` → install the certificate → open the `https://<ip>:8443/?pin=...` address the hub printed, without a warning → Install app / Add to Home Screen.
 - [ ] Debug → **Offline ready: yes, cached**. Camera, precise location and motion allowed. Detector is not MOCK.
 - [ ] Debug → **Clear hazards on this phone** on every phone that was used in rehearsal.
 - [ ] Drive → Start, point at a road photo or video: boxes appear, a confirmation vibrates, the hazard shows on Map.
 - [ ] A confirmation on phone A appears on phone B within a second or two; both confirming the same spot shows x2.
+- [ ] Phone B, Started and moving towards (or standing at) the spot phone A reported: **"Pothole ahead"** banner, beeps, vibration.
 - [ ] Stop the hub: phones keep working, the banner changes, new hazards show *Waiting to sync*. Start it again: they reconnect and catch up.
 - [ ] Close the app, switch the phone to airplane mode (Wi-Fi off), reopen from the Home Screen icon: the app, the map and its hazards are all there.
 - [ ] Demo Mode works on both phones, in case it is needed.
 
 ## Known limitations
 
-* **No accuracy claims exist.** Whatever the model does on real roads is unmeasured until somebody measures it and writes it in `model/RESULTS.md`.
+* **Accuracy is measured on public photos only** ([`model/RESULTS.md`](model/RESULTS.md)): what the model does on Antipolo roads from a handlebar mount is unmeasured until somebody records and labels such footage. It does not detect flooded roads at all.
 * A hazard is placed where the *phone* is when it confirms, not where the camera saw it, so markers sit a few metres before the real thing. A geohash-8 cell is about 37 m × 19 m near Antipolo: two close potholes of one kind share a hazard, and one on a cell border can become two. There is no neighbour-cell merge.
 * Access control is a **shared event PIN** (`npm run hub -- --pin <code>`), off by default: without it anyone on the hotspot can read and post hazards, with it only phones that were given the PIN can. It is one secret for everybody, sent over the hub's TLS, not per-user accounts. Hazards carry a location and a random per-install device id (it identifies an install, not a person); the hub snapshot (`hub/data/`, git-ignored) holds them.
 * Phone clocks should roughly agree: the hub rejects hazards stamped more than 10 minutes in the future, and ages on the map depend on the clocks.
 * Hazards expire by time only (flooded road 6 hours, pothole and crack 21 days). There is no "repaired" message.
 * A web page cannot keep the camera and GPS running with the screen off or in the background. The phone must stay unlocked in the foreground (the app asks for a screen wake lock where the browser allows it).
-* WebGPU depends on the phone's browser and GPU; WASM is the fallback and is slower. Neither has been timed on a phone yet.
+* WebGPU depends on the phone's browser and GPU; WASM is the fallback and is slower (single-threaded: the hub does not enable cross-origin isolation, see the note in `hub/src/hub.ts`). In the rehearsal, WASM on a laptop CPU takes about 130 ms a frame; neither has been timed on a phone yet.
 * This is not a safety system. Do not operate the phone while riding; mount it securely and let a passenger run demos.
 
 ## Working on the code

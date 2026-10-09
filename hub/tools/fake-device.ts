@@ -25,6 +25,7 @@ import {
   DEMO_CENTER,
   diffMessages,
   encodeWsMessage,
+  HUB_PIN_PARAM,
   newDeviceId,
   offsetMeters,
   parseWsMessage,
@@ -32,6 +33,7 @@ import {
   polylineLengthMeters,
   reconcile,
   summarize,
+  WS_CLOSE_PIN_REQUIRED,
   WS_PATH,
   type Hazard,
   type HazardClass,
@@ -48,6 +50,7 @@ Usage: npm run fake-device -- [options]
   --url <url>       hub address, default $HUB_URL or https://localhost:8443 (http(s) or ws(s) accepted)
   --ca <file>       CA certificate to trust, default hub/.certs/lubak-hub-ca.crt when it exists
   --insecure        do NOT verify the hub certificate (prints a warning)
+  --pin <code>      the hub's event PIN, default $HUB_PIN (needed when the hub runs with --pin)
   --rate <n>        hazards per second across all fake devices, default 1
   --devices <n>     number of fake phones (separate connections / device ids), default 2
   --spots <n>       distinct hazard locations along the route, default 30
@@ -194,7 +197,8 @@ class FakeDevice {
       if (!this.connected) this.opts.log(`${this.tag()} cannot reach the hub: ${err.message}`);
     });
 
-    ws.on('close', () => {
+    ws.on('close', (code) => {
+      if (code === WS_CLOSE_PIN_REQUIRED) this.opts.log(`${this.tag()} the hub wants its event PIN: add --pin <code> (or set HUB_PIN)`);
       const was = this.connected;
       this.connected = false;
       if (this.stopped) return;
@@ -239,6 +243,13 @@ function normalizeUrl(raw: string): string {
   return u.toString();
 }
 
+function withPin(url: string, pin: string | undefined): string {
+  if (!pin) return url;
+  const u = new URL(url);
+  u.searchParams.set(HUB_PIN_PARAM, pin);
+  return u.toString();
+}
+
 function positiveNumber(raw: string | undefined, fallback: number, name: string): number {
   if (raw === undefined) return fallback;
   const n = Number(raw);
@@ -252,6 +263,7 @@ async function main(): Promise<void> {
       url: { type: 'string' },
       ca: { type: 'string' },
       insecure: { type: 'boolean' },
+      pin: { type: 'string' },
       rate: { type: 'string' },
       devices: { type: 'string' },
       spots: { type: 'string' },
@@ -278,7 +290,7 @@ async function main(): Promise<void> {
     throw new Error('--center must look like 14.585,121.176');
   }
 
-  const url = normalizeUrl(values.url ?? process.env['HUB_URL'] ?? 'https://localhost:8443');
+  const url = withPin(normalizeUrl(values.url ?? process.env['HUB_URL'] ?? 'https://localhost:8443'), values.pin ?? process.env['HUB_PIN']);
   const wsOptions: DeviceOptions['wsOptions'] = {};
   const caFile = values.ca ?? path.join(HUB_ROOT, '.certs', 'lubak-hub-ca.crt');
   if (values.insecure) {
@@ -296,7 +308,7 @@ async function main(): Promise<void> {
   const devices = Array.from({ length: deviceCount }, (_, index) => new FakeDevice({ index, url, wsOptions, log }));
 
   log(`fake device(s): ${deviceCount} phone(s), ${rate} hazard(s)/s total, ${spotCount} synthetic spots near ${clat}, ${clon}`);
-  log(`hub: ${url}${wsOptions.ca ? `  (trusting ${path.relative(process.cwd(), caFile) || caFile})` : ''}`);
+  log(`hub: ${url.replace(/([?&]pin=)[^&]+/, '$1***')}${wsOptions.ca ? `  (trusting ${path.relative(process.cwd(), caFile) || caFile})` : ''}`);
   for (const d of devices) d.start();
 
   // Each phone walks the route spot by spot, starting at a different place, so spots collect several confirmations.
