@@ -30,6 +30,8 @@ export interface HubConfig {
   extraNames: string[];
   /** Delete any existing snapshot at start. */
   fresh: boolean;
+  /** Shared event PIN. When set, /ws and /api/hazards answer only to phones that send it; null = anyone on the network. */
+  pin: string | null;
   logLevel: LogLevel;
 }
 
@@ -48,6 +50,8 @@ Options (environment variable in brackets)
   --data <dir>       snapshot directory, default hub/data         [HUB_DATA_DIR]
   --certs <dir>      TLS directory, default hub/.certs            [HUB_CERT_DIR]
   --fresh            discard the saved hazard snapshot at start   [HUB_FRESH=1]
+  --pin <code>       require this event PIN from phones (4-32 letters/digits); phones open
+                     https://<hub>/?pin=<code> once. Default: none, anyone on the network syncs  [HUB_PIN]
   --quiet | --verbose                                              [HUB_LOG=quiet|info|debug]
   -h, --help
 `;
@@ -60,6 +64,14 @@ function toPort(raw: string | undefined, fallback: number, label: string): numbe
 }
 
 const flag = (env: string | undefined): boolean => env === '1' || env === 'true';
+
+/** 4 to 32 letters, digits, '-' or '_': typed on a phone, and safe in a URL without escaping. Empty = no PIN. */
+function toPin(raw: string | undefined): string | null {
+  const pin = (raw ?? '').trim();
+  if (pin === '') return null;
+  if (!/^[A-Za-z0-9_-]{4,32}$/.test(pin)) throw new Error('--pin / HUB_PIN must be 4 to 32 letters, digits, "-" or "_"');
+  return pin;
+}
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] = process.argv.slice(2)): HubConfig | 'help' {
   const { values } = parseArgs({
@@ -75,6 +87,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] 
       data: { type: 'string' },
       certs: { type: 'string' },
       fresh: { type: 'boolean' },
+      pin: { type: 'string' },
       quiet: { type: 'boolean' },
       verbose: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
@@ -105,6 +118,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] 
       .map((s) => s.trim())
       .filter(Boolean),
     fresh: Boolean(values.fresh) || flag(env['HUB_FRESH']),
+    pin: toPin(values.pin ?? env['HUB_PIN']),
     logLevel,
   };
 }

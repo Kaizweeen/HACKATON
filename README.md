@@ -169,6 +169,7 @@ The script has ten encounters: eight should confirm and two must be rejected (a 
 | `--no-mkcert`, `--no-tls` | `HUB_MKCERT=0`, `HUB_TLS=0` | mkcert if installed; TLS on |
 | `--static`, `--data`, `--certs` | `HUB_STATIC_DIR`, `HUB_DATA_DIR`, `HUB_CERT_DIR` | `app/dist`, `hub/data`, `hub/.certs` |
 | `--fresh` | `HUB_FRESH=1` | keep the saved snapshot |
+| `--pin <code>` | `HUB_PIN` | none: anyone on the network can sync. With a PIN (4-32 letters, digits, `-`, `_`) the hub prints `https://<ip>:8443/?pin=<code>`; a phone opens that once and the app remembers it (Debug > Hub PIN to change it). Without it, the phone says "The hub needs the event PIN" |
 | `--quiet`, `--verbose` | `HUB_LOG` | info |
 
 **Fake device** (`npm run fake-device -- ...`): `--url`, `--ca`, `--rate <hazards/s>`, `--devices <n>`, `--spots <n>`, `--jitter <m>`, `--center <lat,lon>`, `--seed`, `--count`. It verifies the hub's certificate against `hub/.certs/lubak-hub-ca.crt`; `--insecure` exists but is opt-in and warns.
@@ -226,7 +227,7 @@ First: (1) render real offline tiles for the demo area (QGIS recipe in `app/publ
 
 * **No accuracy claims exist.** Whatever the model does on real roads is unmeasured until somebody measures it and writes it in `model/RESULTS.md`.
 * A hazard is placed where the *phone* is when it confirms, not where the camera saw it, so markers sit a few metres before the real thing. A geohash-8 cell is about 37 m × 19 m near Antipolo: two close potholes of one kind share a hazard, and one on a cell border can become two. There is no neighbour-cell merge.
-* The hub has **no authentication**: anyone on the hotspot can read and post hazards. Fine for a demo, not for deployment. Hazards carry a location and a random per-install device id (it identifies an install, not a person); the hub snapshot (`hub/data/`, git-ignored) holds them.
+* Access control is a **shared event PIN** (`npm run hub -- --pin <code>`), off by default: without it anyone on the hotspot can read and post hazards, with it only phones that were given the PIN can. It is one secret for everybody, sent over the hub's TLS, not per-user accounts. Hazards carry a location and a random per-install device id (it identifies an install, not a person); the hub snapshot (`hub/data/`, git-ignored) holds them.
 * Phone clocks should roughly agree: the hub rejects hazards stamped more than 10 minutes in the future, and ages on the map depend on the clocks.
 * Hazards expire by time only (flooded road 6 hours, pothole and crack 21 days). There is no "repaired" message.
 * A web page cannot keep the camera and GPS running with the screen off or in the background. The phone must stay unlocked in the foreground (the app asks for a screen wake lock where the browser allows it).

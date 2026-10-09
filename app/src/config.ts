@@ -4,7 +4,7 @@
  * Everything here is non-secret and safe to commit.
  */
 
-import { newDeviceId, DEMO_CENTER, WS_PATH } from '@lubak/shared';
+import { newDeviceId, DEMO_CENTER, HUB_PIN_PARAM, WS_PATH } from '@lubak/shared';
 
 export type DetectorChoice = 'auto' | 'mock' | 'onnx';
 
@@ -42,6 +42,8 @@ export interface AppConfig {
   hubUrl: string;
   /** Start the Drive screen in Demo Mode. */
   demo: boolean;
+  /** The hub's event PIN (`?pin=` once, then remembered), or null when the hub is open. */
+  hubPin: string | null;
   tiles: TileConfig;
   mapCenter: { lat: number; lon: number; zoom: number };
 }
@@ -50,6 +52,13 @@ interface Persisted {
   detector?: DetectorChoice;
   sampleFps?: number;
   hubUrl?: string;
+  hubPin?: string;
+}
+
+/** Same rule as the hub's --pin: 4 to 32 letters, digits, '-' or '_'. Anything else is ignored. */
+export function normalizePin(raw: string | null | undefined): string | null {
+  const pin = (raw ?? '').trim();
+  return /^[A-Za-z0-9_-]{4,32}$/.test(pin) ? pin : null;
 }
 
 const SETTINGS_KEY = 'lubak.settings';
@@ -135,6 +144,7 @@ export function loadConfig(search: string = location.search, loc: Pick<Location,
     sampleFps: clampFps(fpsRaw === undefined || fpsRaw === null ? 8 : Number(fpsRaw)),
     hubUrl: normalizeHubUrl(q.get('hub') ?? saved.hubUrl ?? hubFallback, hubFallback),
     demo: q.get('demo') === '1',
+    hubPin: normalizePin(q.get(HUB_PIN_PARAM)) ?? normalizePin(saved.hubPin),
     tiles: {
       urlTemplate: `${base}tiles/{z}/{x}/{y}.png`,
       minZoom: 12,

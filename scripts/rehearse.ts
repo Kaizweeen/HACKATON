@@ -3,7 +3,7 @@
  *
  *   npm run build                                          # the hub serves app/dist
  *   python model/tools/make_camera_video.py                # optional: road photos as the phones' camera (else a test pattern)
- *   npm run rehearse [-- --seconds 90 --headed --video <file.y4m | none>]
+ *   npm run rehearse [-- --seconds 90 --headed --video <file.y4m | none> --pin <code | none>]
  *
  * Needs Playwright's Chromium (`npx playwright install chromium`). Writes .rehearsal/report.md plus screenshots and exits non-zero
  * if a check fails. What it checks, in the order of the README's "At the venue" list:
@@ -26,7 +26,8 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { demoRoute, pointAlongPath, type Hazard } from '@lubak/shared';
+import { WebSocket } from 'ws';
+import { demoRoute, pointAlongPath, WS_CLOSE_PIN_REQUIRED, type Hazard } from '@lubak/shared';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
@@ -38,6 +39,7 @@ const { values: opts } = parseArgs({
     video: { type: 'string' },
     out: { type: 'string', default: path.join(root, '.rehearsal') },
     headed: { type: 'boolean', default: false },
+    pin: { type: 'string', default: 'rehearse-4821' },
   },
 });
 const DRIVE_S = Number(opts.seconds);
@@ -48,6 +50,7 @@ const certDir = path.join(root, 'hub', '.certs');
 const defaultVideo = path.join(root, 'model', 'work', 'camera', 'road.y4m');
 const video = opts.video === 'none' ? null : opts.video ? path.resolve(opts.video) : fs.existsSync(defaultVideo) ? defaultVideo : null;
 const hasModel = fs.existsSync(path.join(root, 'app', 'dist', 'models', 'lubak.onnx'));
+const PIN = opts.pin === 'none' ? '' : opts.pin!; // the hub runs with an event PIN, as it should on a shared network
 
 interface Check {
   name: string;
@@ -74,7 +77,7 @@ let hub: ChildProcess | null = null;
 function startHub(fresh: boolean): ChildProcess {
   const tsxCli = require.resolve('tsx/cli');
   const args = [tsxCli, 'hub/src/index.ts', '--port', String(PORT), '--http-port', 'off', '--no-mkcert', '--host', '127.0.0.1',
-    '--data', path.join(OUT, 'hub-data'), '--quiet', ...(fresh ? ['--fresh'] : [])];
+    '--data', path.join(OUT, 'hub-data'), '--quiet', ...(fresh ? ['--fresh'] : []), ...(PIN ? ['--pin', PIN] : [])];
   const child = spawn(process.execPath, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   const out = fs.createWriteStream(path.join(OUT, 'hub.log'), { flags: 'a' });
   child.stdout!.pipe(out);
@@ -99,7 +102,8 @@ function stopHub(): Promise<void> {
 function hubGet<T>(urlPath: string): Promise<T> {
   const ca = fs.readFileSync(path.join(certDir, 'lubak-hub-ca.crt'));
   return new Promise((resolve, reject) => {
-    const req = https.get({ host: 'localhost', port: PORT, path: urlPath, ca, timeout: 3000 }, (res) => {
+    const withPin = PIN ? `${urlPath}${urlPath.includes('?') ? '&' : '?'}pin=${PIN}` : urlPath;
+    const req = https.get({ host: 'localhost', port: PORT, path: withPin, ca, timeout: 3000 }, (res) => {
       let body = '';
       res.on('data', (c) => (body += c));
       res.on('end', () => {
@@ -126,6 +130,23 @@ async function waitForHub(timeoutMs = 60_000): Promise<void> {
     }
   }
   throw new Error(`the hub did not answer on https://localhost:${PORT} within ${timeoutMs / 1000} s (see ${path.join(OUT, 'hub.log')})`);
+}
+
+/** Connect like a phone that never got the PIN; resolve with the close code the hub sends. */
+function strangerCloseCode(): Promise<number> {
+  const ca = fs.readFileSync(path.join(certDir, 'lubak-hub-ca.crt'));
+  return new Promise((resolve) => {
+    const ws = new WebSocket(`wss://localhost:${PORT}/ws`, { ca });
+    const timer = setTimeout(() => {
+      ws.terminate();
+      resolve(-1);
+    }, 5000);
+    ws.on('close', (code) => {
+      clearTimeout(timer);
+      resolve(code);
+    });
+    ws.on('error', () => undefined);
+  });
 }
 
 /** base64 SHA-256 of the hub certificate's public key, for Chromium's --ignore-certificate-errors-spki-list. */
@@ -208,7 +229,8 @@ async function main(): Promise<void> {
   };
   const A = await phone('A');
   const B = await phone('B');
-  const url = `https://localhost:${PORT}/${hasModel ? '?detector=onnx' : ''}`;
+  const query = new URLSearchParams({ ...(hasModel ? { detector: 'onnx' } : {}), ...(PIN ? { pin: PIN } : {}) }).toString();
+  const url = `https://localhost:${PORT}/${query ? `?${query}` : ''}`;
   // Without a road video nothing real can be detected; phone B then drives in Demo Mode (scripted detections through the real
   // confirmer, store and sync) so there are hazards to sync, while phone A still runs the real model on the camera.
   const demoB = !video;
@@ -217,11 +239,18 @@ async function main(): Promise<void> {
   // 1. trusted HTTPS + service worker
   for (const p of [A, B]) {
     const t0 = Date.now();
-    await p.page.goto(p === B && demoB ? `https://localhost:${PORT}/?demo=1` : url);
+    await p.page.goto(p === B && demoB ? `https://localhost:${PORT}/?demo=1${PIN ? `&pin=${PIN}` : ''}` : url);
     const ready = await waitForRow(p.page, 'Offline ready', /yes, cached|service worker active/, 120_000);
     const secure = await p.page.evaluate(() => window.isSecureContext && location.protocol === 'https:');
     check(`phone ${p.name}: HTTPS without a certificate warning, offline cache ready`, secure && /yes|active/.test(ready),
       `secure context ${secure}, "Offline ready: ${ready}" after ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+  }
+
+  if (PIN) {
+    const code = await strangerCloseCode();
+    check('a phone without the event PIN is refused', code === WS_CLOSE_PIN_REQUIRED, `WebSocket without ?pin= closed with code ${code} (expected ${WS_CLOSE_PIN_REQUIRED})`);
+    const shown = await A.page.evaluate(() => location.search);
+    check('the PIN is remembered and taken out of the address bar', !shown.includes('pin='), `address bar query after load: "${shown}"`);
   }
 
   // 2. start driving; the detector must be the real model

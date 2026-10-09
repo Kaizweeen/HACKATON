@@ -62,11 +62,17 @@ async function main(): Promise<void> {
     });
   }
 
+  const pinQuery = config.pin ? `/?pin=${config.pin}` : '';
   const lines: string[] = ['LUBAK ALERT HUB is running', ''];
   lines.push('Open this on every phone (same Wi-Fi / hotspot as this computer):');
-  for (const a of addresses) lines.push(`  ${scheme}://${a.address}:${hub.port}   (${a.iface}${a.hint ? `, ${a.hint}` : ''})`);
+  for (const a of addresses) lines.push(`  ${scheme}://${a.address}:${hub.port}${pinQuery}   (${a.iface}${a.hint ? `, ${a.hint}` : ''})`);
   if (addresses.length === 0) lines.push('  (no LAN address found: connect to a Wi-Fi network or turn on a hotspot, then restart the hub)');
-  lines.push(`  ${scheme}://localhost:${hub.port}   (this computer)`);
+  lines.push(`  ${scheme}://localhost:${hub.port}${pinQuery}   (this computer)`);
+  lines.push(
+    config.pin
+      ? `Event PIN is ON: phones need the ?pin= part once (the app remembers it), or Debug > Hub PIN "${config.pin}".`
+      : 'No event PIN: anyone on this network can sync hazards. On a shared network start the hub with --pin <code>.',
+  );
   lines.push('');
   if (tls) {
     lines.push(`HTTPS certificate: ${tls.mode === 'mkcert' ? 'mkcert' : 'local CA made with the selfsigned package'}, valid until ${tls.leafNotAfter.toISOString().slice(0, 10)}`);
@@ -83,7 +89,7 @@ async function main(): Promise<void> {
     lines.push('  2. Android: Settings > Security > Encryption & credentials > Install a certificate > CA certificate.');
     lines.push('     iPhone (Safari!): Allow the download, Settings > Profile Downloaded > Install, then');
     lines.push('     Settings > General > About > Certificate Trust Settings > switch the CA on.');
-    lines.push(`  3. Open  ${scheme}://${hosts[0]}:${hub.port}  -> no warning -> "Install app" / "Add to Home Screen".`);
+    lines.push(`  3. Open  ${scheme}://${hosts[0]}:${hub.port}${pinQuery}  -> no warning -> "Install app" / "Add to Home Screen".`);
     lines.push(`  CA SHA-256: ${tls.caFingerprint256}`);
     lines.push(`  CA file on this computer: ${tls.caCertPath}`);
     lines.push('  More detail and troubleshooting: README.md > "Trusting the certificate".');
