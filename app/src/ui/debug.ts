@@ -107,6 +107,7 @@ export class DebugScreen {
           { label: 'Flag', value: () => `${ctx.config.detector}${ctx.detectorSelection?.fellBackBecause ? ` → fell back (${ctx.detectorSelection.fellBackBecause})` : ''}` },
           { label: 'In use', value: () => (info() ? `${info()!.kind} / ${info()!.backend}` : 'not started'), tone: () => (info()?.kind === 'mock' ? 'bad' : info()?.kind === 'replay' ? 'warn' : undefined) },
           { label: 'Model', value: () => `${info()?.model ?? '–'}${info()?.loadMs ? ` (loaded in ${Math.round(info()!.loadMs!)} ms)` : ''}` },
+          { label: 'Last frame split', value: () => (info()?.timings ? `preprocess ${num(info()!.timings!.preMs, 1)} ms · model ${num(info()!.timings!.runMs, 1)} ms · decode + NMS ${num(info()!.timings!.postMs, 1)} ms` : '–') },
           { label: 'Detector error', value: () => info()?.error ?? 'none', tone: () => (info()?.error ? 'bad' : undefined) },
         ],
       },

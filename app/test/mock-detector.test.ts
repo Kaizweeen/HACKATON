@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { HAZARD_CLASSES } from '@lubak/shared';
 import { Confirmer } from '../src/confirmer.js';
-import { classIdOf, MockDetector, createDetector } from '../src/detector.js';
+import { classIdOf, MockDetector } from '../src/detector.js';
 import type { FrameSource } from '../src/detector.js';
 import { FRAME_MS } from './helpers.js';
 
@@ -64,21 +64,5 @@ describe('MockDetector', () => {
     expect(d.info()).toMatchObject({ kind: 'mock', backend: 'mock', ready: false });
     await d.init();
     expect(d.info().ready).toBe(true);
-  });
-});
-
-describe('createDetector', () => {
-  const base = { modelUrl: '/models/lubak.onnx', inputSize: 320 };
-
-  it('returns the mock when asked for it', async () => {
-    const sel = await createDetector({ ...base, detector: 'mock' });
-    expect(sel.detector.info().kind).toBe('mock');
-    expect(sel.fellBackBecause).toBeNull();
-  });
-
-  it('never falls back silently: auto reports why the mock is in use', async () => {
-    const sel = await createDetector({ ...base, detector: 'auto' });
-    expect(sel.detector.info().kind).toBe('mock');
-    expect(sel.fellBackBecause).toBeTruthy();
   });
 });

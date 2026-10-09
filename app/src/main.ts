@@ -6,6 +6,7 @@
 import './style.css';
 import { registerSW } from 'virtual:pwa-register';
 import * as shared from '@lubak/shared';
+import * as detector from './detector.js';
 import { getOrCreateDeviceId, loadConfig } from './config.js';
 import { HazardStore } from './store.js';
 import { SyncClient } from './sync.js';
@@ -18,7 +19,7 @@ import type { PipelineEvent } from './pipeline.js';
 declare global {
   interface Window {
     /** Debug handle for the browser console and end-to-end tests. */
-    __lubak?: { ctx: AppContext; shell: Shell; store: HazardStore; sync: SyncClient; shared: typeof shared };
+    __lubak?: { ctx: AppContext; shell: Shell; store: HazardStore; sync: SyncClient; shared: typeof shared; detector: typeof detector };
   }
 }
 
@@ -113,7 +114,7 @@ async function main(): Promise<void> {
   const shell = new Shell(root, ctx);
   sync.start();
   registerServiceWorker(ctx);
-  window.__lubak = { ctx, shell, store, sync, shared };
+  window.__lubak = { ctx, shell, store, sync, shared, detector };
   log.add(`Lubak Alert started (device ${deviceId.slice(0, 8)}, hub ${config.hubUrl})`);
 }
 
