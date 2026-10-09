@@ -1,0 +1,10 @@
+# Ultralytics dataset file. `model/datasets.py` writes the real one (data.yaml) next to the converted images.
+# The class ORDER is the contract with the app (HAZARD_CLASSES in shared/src/hazard.ts): do not reorder or insert.
+path: /content/dataset        # TODO: absolute path of the folder that contains images/ and labels/
+train: images/train
+val: images/val
+nc: 3
+names:
+  0: pothole
+  1: crack
+  2: flooded_road

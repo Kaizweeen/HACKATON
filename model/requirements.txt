@@ -1,0 +1,7 @@
+# Training + export (Colab already has torch; this is for a local machine).
+# Pin what you trained with: `pip freeze | grep -iE "ultralytics|torch|onnx"` and paste it into RESULTS.md.
+ultralytics>=8.3
+onnx>=1.16
+onnxruntime>=1.18
+onnxslim          # used by Ultralytics' ONNX simplify step
+numpy

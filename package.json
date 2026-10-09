@@ -5,15 +5,22 @@
   "description": "Offline-first pothole / crack / flood hazard detector: on-device AI in the browser, shared over a local hotspot hub. AppBuildersPH Hackathon 2026 (Local AI).",
   "type": "module",
   "workspaces": [
-    "shared"
+    "shared",
+    "hub",
+    "app"
   ],
   "engines": {
     "node": ">=22.12.0"
   },
   "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build -w @lubak/app",
+    "start": "npm run hub",
+    "hub": "tsx hub/src/index.ts",
+    "fake-device": "tsx hub/tools/fake-device.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p test/tsconfig.json"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

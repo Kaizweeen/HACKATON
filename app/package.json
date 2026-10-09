@@ -1,0 +1,28 @@
+{
+  "name": "@lubak/app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Lubak Alert PWA: camera + on-device detector + sensors + offline map, syncing through the local hub.",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run typecheck && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json",
+    "icons": "node scripts/make-icons.mjs",
+    "tiles:placeholder": "node scripts/make-placeholder-tiles.mjs"
+  },
+  "dependencies": {
+    "@lubak/shared": "*",
+    "idb": "^8.0.4",
+    "leaflet": "^1.9.4",
+    "onnxruntime-web": "^1.30.0"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.0",
+    "vite": "^8.3.4",
+    "vite-plugin-pwa": "^2.0.0",
+    "workbox-build": "^7.4.1",
+    "workbox-window": "^7.4.1"
+  }
+}
