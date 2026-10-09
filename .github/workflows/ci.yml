@@ -53,4 +53,5 @@ jobs:
         with:
           name: rehearsal-report
           path: .rehearsal/
-          if-no-files-found: ignore
+          include-hidden-files: true # .rehearsal is a dot-folder, which upload-artifact skips by default
+          if-no-files-found: warn
