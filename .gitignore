@@ -33,3 +33,6 @@ app/public/models/dummy*.onnx
 
 # offline map source data (app/scripts/offline_tiles.py fetch); the rendered tiles in app/public/tiles ARE committed
 app/.tiles-cache/
+
+# npm run rehearse output (report, screenshots, the rehearsal hub's data)
+.rehearsal/

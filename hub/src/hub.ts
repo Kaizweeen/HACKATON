@@ -15,6 +15,7 @@ import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
+import compression from 'compression';
 import express from 'express';
 import { WebSocket, WebSocketServer } from 'ws';
 import {
@@ -110,6 +111,9 @@ export function createHub(opts: HubOptions): Hub {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     next();
   });
+  // gzip on the way out: the onnxruntime WASM shrinks from ~27 MB to ~7 MB, which is what every phone downloads over the
+  // hotspot on its first visit. PNG tiles and the ONNX weights barely compress and are skipped by size/type rules.
+  app.use(compression({ threshold: 1024 }));
 
   const clients = new Set<ClientInfo>();
   let nextClientId = 1;

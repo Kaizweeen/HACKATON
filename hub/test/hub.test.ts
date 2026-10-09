@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { HOUR_MS, summarize, TTL_MS } from '@lubak/shared';
 import { ensureTls, type TlsMaterial } from '../src/certs.js';
@@ -315,6 +316,28 @@ describe('HTTPS and static files', () => {
     expect((await get(`${rig.baseUrl}/sw.js`)).headers['cache-control']).toBe('no-cache');
     expect((await get(`${rig.baseUrl}/assets/app-abc123.js`)).headers['cache-control']).toBe('public, max-age=31536000, immutable');
     expect((await get(`${rig.baseUrl}/model.onnx`)).status).toBe(200);
+  });
+
+  it('gzips what compresses (the onnxruntime WASM is most of a first visit over the hotspot), only for clients that ask', async () => {
+    const staticDir = tempDir();
+    const wasm = Buffer.from('\0asm'.repeat(20_000)); // compressible, like the real runtime
+    fs.writeFileSync(path.join(staticDir, 'index.html'), '<!doctype html><title>Lubak</title>');
+    fs.mkdirSync(path.join(staticDir, 'assets'));
+    fs.writeFileSync(path.join(staticDir, 'assets', 'ort-abc123.wasm'), wasm);
+    const rig = await startRig({ staticDir });
+    const raw = await new Promise<{ encoding: string | undefined; body: Buffer }>((resolve, reject) => {
+      https
+        .get(`${rig.baseUrl}/assets/ort-abc123.wasm`, { ca: tls.caCertPem, agent: false, headers: { 'Accept-Encoding': 'gzip' } }, (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (d: Buffer) => chunks.push(d));
+          res.on('end', () => resolve({ encoding: res.headers['content-encoding'], body: Buffer.concat(chunks) }));
+        })
+        .on('error', reject);
+    });
+    expect(raw.encoding).toBe('gzip');
+    expect(raw.body.length).toBeLessThan(wasm.length / 10);
+    expect(zlib.gunzipSync(raw.body).equals(wasm)).toBe(true);
+    expect((await get(`${rig.baseUrl}/assets/ort-abc123.wasm`)).headers['content-encoding']).toBeUndefined();
   });
 
   it('answers 404 for missing files (map tiles!) instead of falling back to index.html', async () => {

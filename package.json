@@ -21,10 +21,12 @@
     "fake-device": "tsx hub/tools/fake-device.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p test/tsconfig.json"
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p test/tsconfig.json && tsc -p scripts/tsconfig.json",
+    "rehearse": "tsx scripts/rehearse.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "playwright": "^1.56.1",
     "tsx": "^4.23.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
