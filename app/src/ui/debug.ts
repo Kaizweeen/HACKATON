@@ -2,6 +2,7 @@
 
 import { HAZARD_CLASSES } from '@lubak/shared';
 import { saveSettings, clampFps, SAMPLE_FPS_MAX, SAMPLE_FPS_MIN, normalizeHubUrl, type DetectorChoice } from '../config.js';
+import { describeClockSkew } from './clock.js';
 import type { AppContext } from './context.js';
 import { h, setText } from './dom.js';
 
@@ -138,7 +139,7 @@ export class DebugScreen {
           { label: 'Hub URL', value: () => sync().url },
           { label: 'Retry', value: () => (sync().retryInMs !== null ? `attempt ${sync().attempt}, in ${(sync().retryInMs! / 1000).toFixed(1)} s` : '–') },
           { label: 'Round trip', value: () => num(sync().rttMs, 0, ' ms') },
-          { label: 'Clock vs hub', value: () => (sync().clockSkewMs === null ? '–' : `${num(sync().clockSkewMs! / 1000, 1, ' s')} ${Math.abs(sync().clockSkewMs!) > 60_000 ? '(too far off: the hub will reject new hazards)' : ''}`), tone: () => (sync().clockSkewMs !== null && Math.abs(sync().clockSkewMs!) > 60_000 ? 'bad' : undefined) },
+          { label: 'Clock vs hub', value: () => describeClockSkew(sync().clockSkewMs).text, tone: () => describeClockSkew(sync().clockSkewMs).tone },
           { label: 'Waiting to sync', value: () => String(sync().pending), tone: () => (sync().pending > 0 ? 'warn' : undefined) },
           { label: 'Hazards sent / received', value: () => `${sync().sent} / ${sync().received}` },
           { label: 'Last message', value: () => (sync().lastMessageAt ? age(Date.now() - sync().lastMessageAt!) : '–') },

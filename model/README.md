@@ -51,7 +51,8 @@ input size, change `MODEL_INPUT_SIZE` in `app/src/config.ts` too; the class list
 Verified with a real (toy-trained, so meaningless in accuracy) 3-class YOLOv8n exported by this script (Ultralytics 8.4.174, onnxruntime 1.31):
 the export produces input `[1,3,320,320]` and output `[1,7,2100]` at opset 12; the app's TypeScript decode, class-aware NMS and
 un-letterbox return the same detections as Ultralytics' own `non_max_suppression` + `scale_boxes` (box differences below 0.005 px); onnxruntime-web on WASM and on WebGPU
-matches Python's onnxruntime to about 1e-6 on that graph; the browser's canvas preprocessing is within one 8-bit level of OpenCV's letterbox.
+matches Python's onnxruntime to about 1e-6 on that graph; the browser's canvas preprocessing differs from OpenCV's letterbox by about a quarter of an 8-bit level on average
+(worst single value: one level on four of five test images, about ten on an odd-sized 641x361 one). Whether that matters for a trained model's accuracy has not been measured.
 
 **Not** verified: how accurate any trained model is (none exists), WebGPU on real phone GPUs, inference time on phones (the Debug screen reports it), iOS Safari.
 For scale only: a single-threaded WASM run of the real YOLOv8n graph measured about 100 to 200 ms per frame including preprocessing on the Xeon server CPU of the
