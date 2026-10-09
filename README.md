@@ -58,7 +58,7 @@ npm test               # shared, hub and app unit + integration tests
 npm run typecheck
 npm run build          # type-checks, then builds the PWA into app/dist
 npm run hub            # HTTPS + WebSocket hub: makes a certificate on first run, prints the LAN URL
-npm run fake-device    # in a second terminal: fake phones driving a test route near Antipolo (14.585, 121.176)
+npm run fake-device    # in a second terminal: fake phones driving the demo loop on real streets in Antipolo
 ```
 
 **Shortcut: `npm run demo`** builds the app, adds placeholder map tiles if you have none, and starts the hub with an empty store. The rehearsal script is in [`DEMO.md`](DEMO.md).

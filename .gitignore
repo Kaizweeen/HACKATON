@@ -30,5 +30,6 @@ Thumbs.db
 # test-only ONNX fixture from model/tools/make_dummy_onnx.py: must never be committed or shipped as the model
 app/public/models/dummy*.onnx
 
-# generated placeholder map tiles (see app/public/tiles/README.md)
-app/public/tiles/*/
+
+# offline map source data (app/scripts/offline_tiles.py fetch); the rendered tiles in app/public/tiles ARE committed
+app/.tiles-cache/

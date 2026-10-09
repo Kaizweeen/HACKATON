@@ -1,6 +1,6 @@
 /**
  * Fake device: connects to the hub exactly like a phone would and emits plausible hazards along a
- * synthetic route near Antipolo, Rizal (14.585 N, 121.176 E), so the hub and the map can be tested with
+ * route through Antipolo, Rizal (the Demo Mode loop on real streets around 14.5847 N, 121.1757 E), so the hub and the map can be tested with
  * no camera, no model and no GPS.
  *
  *   npm run fake-device                          # 2 devices, 1 hazard/s in total, runs until Ctrl+C
@@ -52,7 +52,7 @@ Usage: npm run fake-device -- [options]
   --devices <n>     number of fake phones (separate connections / device ids), default 2
   --spots <n>       distinct hazard locations along the route, default 30
   --jitter <m>      GPS noise in metres (standard deviation), default 2
-  --center <lat,lon> route centre, default 14.585,121.176
+  --center <lat,lon> route centre, default 14.58471,121.175709 (the demo loop follows real streets only there)
   --seed <n>        random seed, default 1
   --count <n>       stop after n hazards (default: run until Ctrl+C)
   -h, --help

@@ -26,7 +26,12 @@ export interface TileConfig {
   maxNativeZoom: number;
   maxZoom: number;
   attribution: string;
+  /** The area the tiles cover; the map stays inside it and asks for no tiles outside it. */
+  bounds?: { south: number; west: number; north: number; east: number };
 }
+
+/** WIDE_BBOX of app/scripts/offline_tiles.py: change both if you render another area. */
+export const TILE_BOUNDS = Object.freeze({ south: 14.48, west: 121.05, north: 14.7, east: 121.3 });
 
 export interface AppConfig {
   detector: DetectorChoice;
@@ -132,10 +137,11 @@ export function loadConfig(search: string = location.search, loc: Pick<Location,
     demo: q.get('demo') === '1',
     tiles: {
       urlTemplate: `${base}tiles/{z}/{x}/{y}.png`,
-      minZoom: 10,
+      minZoom: 12,
       maxNativeZoom: 17,
       maxZoom: 19,
-      attribution: import.meta.env.VITE_TILE_ATTRIBUTION ?? '© OpenStreetMap contributors (offline tiles)',
+      attribution: import.meta.env.VITE_TILE_ATTRIBUTION ?? '© OpenStreetMap contributors, Overture Maps Foundation (offline tiles)',
+      bounds: TILE_BOUNDS,
     },
     mapCenter: { lat: DEMO_CENTER.lat, lon: DEMO_CENTER.lon, zoom: 14 },
   };

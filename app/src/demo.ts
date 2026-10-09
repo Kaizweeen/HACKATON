@@ -184,7 +184,7 @@ export class DemoGeo implements LocationSource {
   private listeners = new Set<(fix: GeoFix) => void>();
   private _fix: GeoFix | null = null;
   private active = false;
-  private lastEmit = -Infinity;
+  private lastSlot = -1;
   private readonly route = demoRoute();
 
   get fix(): GeoFix | null {
@@ -202,11 +202,17 @@ export class DemoGeo implements LocationSource {
     return () => this.listeners.delete(listener);
   }
 
-  /** One fix per second, like a phone GPS. The vehicle covers the same stretch of road every lap. */
+  /**
+   * One fix per second, like a phone GPS. The vehicle covers the same stretch of road every lap, and each fix is taken at a
+   * whole second of lap time, not whenever a frame happens to arrive: every phone and every lap then reports the SAME
+   * positions, so a scripted hazard lands in the same geohash cell everywhere (cells along a street are only ~19 m long,
+   * and timer jitter of up to a second would move a fix by 7 m).
+   */
   tick(tMs: number, lapMs: number): void {
-    if (!this.active || tMs - this.lastEmit < 1000) return;
-    this.lastEmit = tMs;
-    const distance = (DEMO_SPEED_MPS * lapTime(tMs, lapMs)) / 1000;
+    const slot = Math.floor(tMs / 1000);
+    if (!this.active || slot === this.lastSlot) return;
+    this.lastSlot = slot;
+    const distance = DEMO_SPEED_MPS * Math.floor(lapTime(tMs, lapMs) / 1000);
     const p = pointAlongPath(this.route, distance, false);
     this._fix = { lat: p.lat, lon: p.lon, accuracy: 4, speed: DEMO_SPEED_MPS, heading: p.headingDeg, t: tMs };
     for (const l of this.listeners) l(this._fix);
