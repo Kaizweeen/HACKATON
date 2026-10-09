@@ -1,0 +1,24 @@
+{
+  "name": "lubak-alert",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Offline-first pothole / crack / flood hazard detector: on-device AI in the browser, shared over a local hotspot hub. AppBuildersPH Hackathon 2026 (Local AI).",
+  "type": "module",
+  "workspaces": [
+    "shared"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.23.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}
