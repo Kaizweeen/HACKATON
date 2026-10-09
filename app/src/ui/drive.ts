@@ -177,7 +177,7 @@ export class DriveScreen {
     motion.start();
 
     this.renderStatus('Starting the camera…');
-    this.camera ??= new Camera({ fps: this.ctx.config.sampleFps });
+    this.camera ??= new Camera({ fps: this.ctx.config.sampleFps, facing: this.ctx.config.camera });
     this.camera.setFps(this.ctx.config.sampleFps);
     try {
       await this.camera.start();
@@ -319,7 +319,9 @@ export class DriveScreen {
         null,
         demo
           ? 'Tap Start to replay a recorded drive along a test route near Antipolo. No camera, model or GPS needed; it runs through the same confirmation, storage, sync and map code.'
-          : 'Mount the phone with the rear camera facing the road, then tap Start. Detection runs on this phone; camera frames never leave it.',
+          : this.ctx.config.camera === 'front'
+            ? 'Testing with the FRONT (selfie) camera: point it at the road, then tap Start. Detection runs on this phone; camera frames never leave it.'
+            : 'Mount the phone with the rear camera facing the road, then tap Start. Detection runs on this phone; camera frames never leave it.',
       ),
     ];
     if (!demo) {

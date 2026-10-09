@@ -1,5 +1,5 @@
 /**
- * Runtime configuration. Precedence: URL query (?detector=mock&fps=6&hub=wss://...&model=...&demo=1)
+ * Runtime configuration. Precedence: URL query (?detector=mock&fps=6&hub=wss://...&model=...&demo=1&camera=front)
  * > saved settings (Debug screen) > build-time env (VITE_*) > defaults.
  * Everything here is non-secret and safe to commit.
  */
@@ -7,6 +7,13 @@
 import { newDeviceId, DEMO_CENTER, WS_PATH } from '@lubak/shared';
 
 export type DetectorChoice = 'auto' | 'mock' | 'onnx';
+
+/**
+ * Which camera looks at the road. 'rear' is the phone's back camera: with the phone mounted screen-toward-rider it is
+ * the one that faces forward, so it is the default. 'front' (the selfie camera) is only for testing, e.g. a phone
+ * mounted the other way round, or a laptop webcam.
+ */
+export type CameraFacing = 'rear' | 'front';
 
 export const SAMPLE_FPS_MIN = 5;
 export const SAMPLE_FPS_MAX = 10;
@@ -25,6 +32,7 @@ export interface AppConfig {
   detector: DetectorChoice;
   modelUrl: string;
   inputSize: number;
+  camera: CameraFacing;
   sampleFps: number;
   hubUrl: string;
   /** Start the Drive screen in Demo Mode. */
@@ -118,6 +126,7 @@ export function loadConfig(search: string = location.search, loc: Pick<Location,
     detector,
     modelUrl: q.get('model') ?? `${base}models/lubak.onnx`,
     inputSize: MODEL_INPUT_SIZE,
+    camera: q.get('camera') === 'front' ? 'front' : 'rear',
     sampleFps: clampFps(fpsRaw === undefined || fpsRaw === null ? 8 : Number(fpsRaw)),
     hubUrl: normalizeHubUrl(q.get('hub') ?? saved.hubUrl ?? hubFallback, hubFallback),
     demo: q.get('demo') === '1',

@@ -1,8 +1,9 @@
 /**
- * camera.ts: rear camera -> hidden <video> -> offscreen canvas, sampled at a configurable 5..10 fps.
+ * camera.ts: the road-facing camera (the phone's rear camera by default) -> hidden <video> -> offscreen canvas,
+ * sampled at a configurable 5..10 fps.
  *
  * Interface other modules rely on:
- *   const cam = new Camera({ fps: 8 });
+ *   const cam = new Camera({ fps: 8 });                      // or { fps: 8, facing: 'front' } to test with the selfie camera
  *   await cam.start();                       // asks for permission, may throw CameraError
  *   const off = cam.onFrame((frame) => ...); // frame.canvas holds the sampled picture
  *   cam.video                                // the (hidden) <video>, used by the Drive screen to draw a smooth preview
@@ -12,7 +13,7 @@
  * `FrameProvider` is the small interface the pipeline depends on, so Demo Mode can substitute a synthetic camera.
  */
 
-import { SAMPLE_FPS_MAX, SAMPLE_FPS_MIN, clampFps } from './config.js';
+import { SAMPLE_FPS_MAX, SAMPLE_FPS_MIN, clampFps, type CameraFacing } from './config.js';
 
 export type CanvasLike = HTMLCanvasElement | OffscreenCanvas;
 
@@ -72,8 +73,23 @@ export function describeCameraError(err: unknown): CameraError {
 
 export interface CameraOptions {
   fps?: number;
+  /** Which camera faces the road. Default 'rear'. */
+  facing?: CameraFacing;
   /** Longest side of the sampled canvas. The detector letterboxes down to 320 anyway, so 640 is plenty. */
   sampleMaxSide?: number;
+}
+
+/**
+ * What we ask the browser for. `ideal`, not `exact`: a laptop (one webcam, no rear camera) must still start,
+ * while a phone picks the camera we name.
+ */
+export function videoConstraints(facing: CameraFacing): MediaTrackConstraints {
+  return {
+    facingMode: { ideal: facing === 'front' ? 'user' : 'environment' },
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    frameRate: { ideal: 30 },
+  };
 }
 
 export class Camera implements FrameProvider {
@@ -85,6 +101,7 @@ export class Camera implements FrameProvider {
   private wakeLock: WakeLockSentinel | null = null;
   private listeners = new Set<(frame: Frame) => void>();
   private fps: number;
+  private readonly facing: CameraFacing;
   private readonly sampleMaxSide: number;
   private seq = 0;
   private lastVideoTime = -1;
@@ -101,6 +118,7 @@ export class Camera implements FrameProvider {
 
   constructor(options: CameraOptions = {}) {
     this.fps = clampFps(options.fps ?? 8);
+    this.facing = options.facing ?? 'rear';
     this.sampleMaxSide = options.sampleMaxSide ?? 640;
 
     // Hidden but attached: iOS Safari will not decode frames for a video that is detached or display:none.
@@ -165,15 +183,7 @@ export class Camera implements FrameProvider {
           window.isSecureContext ? 'unsupported' : 'insecure-context',
         );
       }
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          facingMode: { ideal: 'environment' }, // rear camera on phones, any camera on a laptop
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 30 },
-        },
-      });
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints(this.facing) });
       this.video.srcObject = this.stream;
       await this.video.play();
       for (const track of this.stream.getVideoTracks()) {

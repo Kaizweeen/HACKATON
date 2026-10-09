@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { videoConstraints } from '../src/camera.js';
 import { clampFps, defaultHubUrl, loadConfig, normalizeHubUrl, SAMPLE_FPS_MAX, SAMPLE_FPS_MIN } from '../src/config.js';
 
 const https = { protocol: 'https:', host: '192.168.43.2:8443' };
@@ -15,6 +16,18 @@ describe('config', () => {
     expect(c.hubUrl).toBe('wss://192.168.43.2:8443/ws');
     expect(c.modelUrl).toBe('/models/lubak.onnx');
     expect(c.tiles.urlTemplate).toBe('/tiles/{z}/{x}/{y}.png');
+  });
+
+  it('looks at the road with the rear camera unless asked otherwise, and only accepts the two known values', () => {
+    expect(loadConfig('', https).camera).toBe('rear');
+    expect(loadConfig('?camera=front', https).camera).toBe('front');
+    expect(loadConfig('?camera=rear', https).camera).toBe('rear');
+    expect(loadConfig('?camera=selfie', https).camera).toBe('rear');
+  });
+
+  it('asks the browser for the camera it was configured with, as a preference (a laptop has only one)', () => {
+    expect(videoConstraints('rear').facingMode).toEqual({ ideal: 'environment' });
+    expect(videoConstraints('front').facingMode).toEqual({ ideal: 'user' });
   });
 
   it('plain http pages use ws://', () => {

@@ -82,6 +82,7 @@ export class DebugScreen {
         title: 'Pipeline',
         rows: [
           { label: 'Mode', value: () => (rig() ? (rig()!.mode === 'demo' ? 'DEMO (replayed drive)' : 'live camera') : 'stopped'), tone: () => (rig()?.mode === 'demo' ? 'warn' : undefined) },
+          { label: 'Camera', value: () => (ctx.config.camera === 'front' ? 'front (selfie) camera: testing only' : 'rear camera (faces the road when mounted)'), tone: () => (ctx.config.camera === 'front' ? 'warn' : undefined) },
           { label: 'Capture rate', value: () => `${num(rig()?.camera.measuredFps, 1)} fps (target ${ctx.config.sampleFps})` },
           { label: 'Inference rate', value: () => `${num(stats()?.processedFps, 1)} fps` },
           { label: 'Inference time', value: () => `${num(stats()?.inferenceMsLast, 1)} ms last · ${num(stats()?.inferenceMsAvg, 1)} avg · ${num(stats()?.inferenceMsP95, 1)} p95` },
