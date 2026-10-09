@@ -16,6 +16,7 @@
     "dev": "node scripts/dev.mjs",
     "build": "npm run build -w @lubak/app",
     "start": "npm run hub",
+    "demo": "node scripts/demo.mjs",
     "hub": "tsx hub/src/index.ts",
     "fake-device": "tsx hub/tools/fake-device.ts",
     "test": "vitest run",

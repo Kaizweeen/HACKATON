@@ -61,6 +61,8 @@ npm run hub            # HTTPS + WebSocket hub: makes a certificate on first run
 npm run fake-device    # in a second terminal: fake phones driving a test route near Antipolo (14.585, 121.176)
 ```
 
+**Shortcut: `npm run demo`** builds the app, adds placeholder map tiles if you have none, and starts the hub with an empty store. The rehearsal script is in [`DEMO.md`](DEMO.md).
+
 Open **https://localhost:8443** and look at the Map tab: hazards appear as the fake device reports them. Your browser will warn about the certificate until you trust the hub's CA
 (see below); on this computer you can click through for a quick look, but the service worker (offline mode) only registers once the certificate is trusted.
 Drive tab → **Demo mode** replays a scripted 60-second drive through the real confirmer, store, sync and map, without a camera.
