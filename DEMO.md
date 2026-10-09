@@ -14,6 +14,8 @@ npm run demo          # placeholder tiles if none, build, hub with an empty stor
 3. **Map** tab: eight markers appear along the route. On two phones running it, shared spots show **x2** and each phone sees the other's markers.
 4. Resilience, in this order: stop the hub (banner changes, new hazards say *Waiting to sync*) → start it → they catch up. Then close the app, turn Wi-Fi off, reopen from the home-screen icon: app, map and hazards are all there.
 
+Fallback if the venue breaks everything: [`docs/demo-mode-fallback.webm`](docs/demo-mode-fallback.webm) is a recording of this run (headless Chromium, placeholder tiles, not a real phone).
+
 Say out loud that this is a scripted rehearsal drive (everything on screen is labelled DEMO), not a measurement.
 
 `npm run fake-device` in a second terminal adds hazards from other "riders" while you talk.
