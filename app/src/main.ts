@@ -7,7 +7,7 @@ import './style.css';
 import { registerSW } from 'virtual:pwa-register';
 import * as shared from '@lubak/shared';
 import * as detector from './detector.js';
-import { getOrCreateDeviceId, loadConfig } from './config.js';
+import { getOrCreateDeviceId, loadConfig, saveSettings } from './config.js';
 import { HazardStore } from './store.js';
 import { SyncClient } from './sync.js';
 import { LogBuffer, type AppContext, type ServiceWorkerState } from './ui/context.js';
@@ -71,11 +71,24 @@ function registerServiceWorker(ctx: AppContext): void {
   }, 5000);
 }
 
+/**
+ * A hub with an event PIN prints its address as https://<hub>/?pin=...: keep the PIN for the next launches (the Home Screen
+ * icon opens the app without it) and take it out of the address bar, so it does not end up in screenshots or shared links.
+ */
+function rememberPinFromLink(pin: string | null): void {
+  const url = new URL(location.href);
+  if (!url.searchParams.has(shared.HUB_PIN_PARAM)) return;
+  if (pin) saveSettings({ hubPin: pin });
+  url.searchParams.delete(shared.HUB_PIN_PARAM);
+  history.replaceState(history.state, '', url.toString());
+}
+
 async function main(): Promise<void> {
   const root = document.getElementById('app');
   if (!root) throw new Error('#app is missing from index.html');
 
   const config = loadConfig();
+  rememberPinFromLink(config.hubPin);
   const deviceId = getOrCreateDeviceId();
   const log = new LogBuffer();
 
@@ -84,7 +97,7 @@ async function main(): Promise<void> {
   await store.sweep();
   setInterval(() => void store.sweep(), 60_000);
 
-  const sync = new SyncClient({ url: config.hubUrl, deviceId, store, log: (m) => log.add(`sync: ${m}`) });
+  const sync = new SyncClient({ url: config.hubUrl, pin: config.hubPin, deviceId, store, log: (m) => log.add(`sync: ${m}`) });
 
   const sw: ServiceWorkerState = {
     supported: 'serviceWorker' in navigator,

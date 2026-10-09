@@ -189,7 +189,8 @@ class FoldInYoloFolder(unittest.TestCase):
         self.assertEqual(hist["train"]["flooded_road"] + hist["val"]["flooded_road"], 100)
         self.assertEqual(hist["train"]["pothole"] + hist["train"]["crack"], 0)
         one = next((dst / "labels" / "train").glob("flood_*.txt")).read_text().split()
-        self.assertEqual(one, ["2", "0.5", "0.6", "0.4", "0.2"])
+        self.assertEqual(one[0], "2")
+        self.assertEqual([float(v) for v in one[1:]], [0.5, 0.6, 0.4, 0.2])
 
     def test_labels_next_to_images_and_flat_layouts_are_found(self):
         tmp = Path(tempfile.mkdtemp())
@@ -200,6 +201,70 @@ class FoldInYoloFolder(unittest.TestCase):
         for name in ("a", "b"):
             counts = ds.add_yolo_folder(tmp / name, tmp / f"out_{name}", {0: 2}, prefix=name, val_fraction=0.0)
             self.assertEqual(counts["train"] + counts["val"], 1, name)
+
+    def test_segmentation_polygons_become_their_bounding_box(self):
+        tmp = Path(tempfile.mkdtemp())
+        write(tmp / "src" / "images" / "a.jpg", "j")
+        # a crack polygon from (0.2, 0.1) to (0.4, 0.9): box centre (0.3, 0.5), size 0.2 x 0.8
+        write(tmp / "src" / "labels" / "a.txt", "0 0.2 0.1 0.25 0.5 0.4 0.9 0.3 0.6\n")
+        counts = ds.add_yolo_folder(tmp / "src", tmp / "out", {0: 1}, prefix="crack", val_fraction=0.0)
+        self.assertEqual(counts["boxes"], 1)
+        line = (tmp / "out" / "labels" / "train" / "crack_images_a.txt").read_text().split()
+        self.assertEqual(line[0], "1")
+        for got, want in zip((float(v) for v in line[1:]), (0.3, 0.5, 0.2, 0.8)):
+            self.assertAlmostEqual(got, want, places=5)
+
+
+class LabelParts(unittest.TestCase):
+    def test_boxes_polygons_and_garbage(self):
+        self.assertEqual(ds.label_parts_to_box("0 0.5 0.5 0.2 0.1".split()), (0.5, 0.5, 0.2, 0.1))
+        cx, cy, w, h = ds.label_parts_to_box("0 0 0 1 0 1 1".split())
+        self.assertEqual((cx, cy, w, h), (0.5, 0.5, 1.0, 1.0))
+        self.assertIsNone(ds.label_parts_to_box("0 0.1 0.2 0.3 0.4 0.5".split()))  # odd number of polygon values
+        self.assertIsNone(ds.label_parts_to_box("0 0.5 0.5 0 0.1".split()))  # zero width
+        self.assertIsNone(ds.label_parts_to_box("0 0.3 0.3 0.3 0.3 0.3 0.3".split()))  # polygon collapsed to a point
+
+    def test_polygon_points_outside_the_image_are_clamped(self):
+        cx, cy, w, h = ds.label_parts_to_box("0 -0.2 0.5 0.6 0.5 0.6 1.3".split())
+        self.assertAlmostEqual(cx, 0.3)
+        self.assertAlmostEqual(w, 0.6)
+        self.assertAlmostEqual(cy + h / 2, 1.0)
+
+
+class FoldInPublishedSplits(unittest.TestCase):
+    def make(self, root: Path, layout: str, split: str, n: int, label: str = "0 0.5 0.5 0.2 0.2\n"):
+        for i in range(n):
+            images = root / split / "images" if layout == "roboflow" else root / "images" / split
+            labels = root / split / "labels" if layout == "roboflow" else root / "labels" / split
+            write(images / f"{split}{i:03d}.jpg", "j")
+            write(labels / f"{split}{i:03d}.txt", label)
+
+    def test_keeps_the_published_split_maps_valid_to_val_and_caps_with_a_seeded_sample(self):
+        tmp = Path(tempfile.mkdtemp())
+        pot, crack, out = tmp / "pothole", tmp / "crack", tmp / "out"
+        for split, n in (("train", 30), ("valid", 8), ("test", 5)):
+            self.make(pot, "roboflow", split, n)
+        for split, n in (("train", 50), ("val", 6), ("test", 4)):
+            self.make(crack, "ultralytics", split, n, label="0 0.1 0.1 0.3 0.1 0.3 0.4\n")
+        a = ds.add_yolo_splits(pot, out, {0: 0}, prefix="pothole")
+        b = ds.add_yolo_splits(crack, out, {0: 1}, prefix="crack", limits={"train": 20})
+        self.assertEqual((a["train"], a["val"], a["test"]), (30, 8, 5))
+        self.assertEqual((b["train"], b["val"], b["test"]), (20, 6, 4))
+        hist = ds.class_histogram(out)
+        self.assertEqual(hist["test"], {"images": 9, "pothole": 5, "crack": 4, "flooded_road": 0})
+        self.assertEqual(hist["train"]["crack"], 20)
+        self.assertEqual(ds.check_no_leakage(out), [])
+        self.assertIn("test: images/test", ds.write_data_yaml(out).read_text())
+        again = ds.add_yolo_splits(crack, tmp / "out2", {0: 1}, prefix="crack", limits={"train": 20})
+        self.assertEqual(sorted(p.name for p in (tmp / "out2" / "images" / "train").iterdir()),
+                         sorted(p.name for p in (out / "images" / "train").iterdir() if p.name.startswith("crack_")))
+        self.assertEqual(again["train"], 20)
+
+    def test_leakage_across_test_is_reported(self):
+        tmp = Path(tempfile.mkdtemp())
+        write(tmp / "images" / "train" / "x.jpg", "j")
+        write(tmp / "images" / "test" / "x.jpg", "j")
+        self.assertEqual(ds.check_no_leakage(tmp), ["x"])
 
 
 if __name__ == "__main__":

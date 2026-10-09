@@ -10,11 +10,13 @@
  *   ping            -> answer with ack + serverTime
  */
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
+import compression from 'compression';
 import express from 'express';
 import { WebSocket, WebSocketServer } from 'ws';
 import {
@@ -22,9 +24,11 @@ import {
   diffMessages,
   encodeWsMessage,
   HUB_DEVICE_ID,
+  HUB_PIN_PARAM,
   MAX_MESSAGE_BYTES,
   parseWsMessage,
   summarize,
+  WS_CLOSE_PIN_REQUIRED,
   WS_PATH,
   type Hazard,
   type WsMessage,
@@ -37,7 +41,7 @@ const MAX_MESSAGES_PER_SECOND = 200;
 const MAX_BUFFERED_BYTES = 8 * 1024 * 1024;
 
 export interface HubOptions {
-  config: Pick<HubConfig, 'host' | 'httpsPort' | 'staticDir' | 'snapshotMs' | 'sweepMs' | 'heartbeatMs'>;
+  config: Pick<HubConfig, 'host' | 'httpsPort' | 'staticDir' | 'snapshotMs' | 'sweepMs' | 'heartbeatMs'> & { pin?: string | null };
   /** Omit for plain HTTP. */
   tls?: { key: string; cert: string } | undefined;
   store: HazardStore;
@@ -98,6 +102,14 @@ const NOT_BUILT_PAGE = `<!doctype html><meta charset="utf-8"><meta name="viewpor
 <p>The PWA has not been built yet. On the computer, run <code>npm run build</code> and reload this page.</p>
 <p>The WebSocket endpoint at <code>${WS_PATH}</code> is already live.</p></body>`;
 
+/** Constant-time PIN check; no PIN configured means open. */
+export function pinAccepted(expected: string | null | undefined, given: string | null | undefined): boolean {
+  if (!expected) return true;
+  if (typeof given !== 'string' || given === '') return false;
+  const digest = (v: string): Buffer => crypto.createHash('sha256').update(v).digest();
+  return crypto.timingSafeEqual(digest(expected), digest(given));
+}
+
 export function createHub(opts: HubOptions): Hub {
   const { config, store } = opts;
   const log = opts.log ?? silentLogger;
@@ -108,8 +120,13 @@ export function createHub(opts: HubOptions): Hub {
   app.disable('x-powered-by');
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    // No COOP/COEP (cross-origin isolation) on purpose: it would let onnxruntime-web run WASM on threads, but its worker
+    // threads load the Vite bundle, which touches `document`, and the detector then never starts. Single-threaded is tested.
     next();
   });
+  // gzip on the way out: the onnxruntime WASM shrinks from ~27 MB to ~7 MB, which is what every phone downloads over the
+  // hotspot on its first visit. PNG tiles and the ONNX weights barely compress and are skipped by size/type rules.
+  app.use(compression({ threshold: 1024 }));
 
   const clients = new Set<ClientInfo>();
   let nextClientId = 1;
@@ -119,8 +136,13 @@ export function createHub(opts: HubOptions): Hub {
   app.get('/healthz', (_req, res) => {
     res.json({ ok: true, hazards: store.size, clients: clients.size, uptimeSec: Math.round((now() - startedAt) / 1000) });
   });
-  app.get('/api/hazards', (_req, res) => {
+  app.get('/api/hazards', (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
+    const given = typeof req.query[HUB_PIN_PARAM] === 'string' ? (req.query[HUB_PIN_PARAM] as string) : req.get('x-lubak-pin');
+    if (!pinAccepted(config.pin, given)) {
+      res.status(401).json({ error: 'event PIN required' });
+      return;
+    }
     res.json(store.all());
   });
   app.use(express.static(config.staticDir, { setHeaders: setCacheHeaders, index: 'index.html' }));
@@ -133,10 +155,17 @@ export function createHub(opts: HubOptions): Hub {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
 
   server.on('upgrade', (req, socket, head) => {
-    const pathname = new URL(req.url ?? '/', 'http://hub.local').pathname;
-    if (pathname !== WS_PATH) {
+    const url = new URL(req.url ?? '/', 'http://hub.local');
+    if (url.pathname !== WS_PATH) {
       socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
       socket.destroy();
+      return;
+    }
+    if (!pinAccepted(config.pin, url.searchParams.get(HUB_PIN_PARAM))) {
+      // Finish the handshake and close with a code the app understands: a plain 401 would look like "cannot reach the hub".
+      // The socket never joins `clients`, so nothing it sends is read and nothing is broadcast to it.
+      log.warn(`refused a phone without the event PIN (${req.socket.remoteAddress ?? '?'})`);
+      wss.handleUpgrade(req, socket, head, (ws) => ws.close(WS_CLOSE_PIN_REQUIRED, 'event PIN required'));
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));

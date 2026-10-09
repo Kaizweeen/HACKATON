@@ -20,7 +20,7 @@ import type { Box, Detection } from './detector.js';
 export interface ConfirmerConfig {
   /** Consecutive qualifying frames required. */
   consecutiveFrames: number;
-  /** Minimum confidence per class. PLACEHOLDERS: tune on a validation set, then on the road. */
+  /** Minimum confidence per class, chosen on the validation split (model/RESULTS.md). Re-check them on real road footage. */
   thresholds: Readonly<Record<HazardClass, number>>;
   /** Per-class mute after a confirmation. */
   cooldownMs: number;
@@ -36,7 +36,10 @@ export interface ConfirmerConfig {
 
 export const DEFAULT_CONFIRMER_CONFIG: ConfirmerConfig = {
   consecutiveFrames: 3,
-  thresholds: { pothole: 0.45, crack: 0.4, flooded_road: 0.5 },
+  // pothole and crack: the lowest confidence with per-box precision >= 0.8 on the validation split for lubak_public_v1
+  // (model/RESULTS.md; crack reaches it at the detector's own 0.25 floor). flooded_road: the model has no flood training data
+  // and never outputs one; 0.5 only matters for Demo Mode and other sources.
+  thresholds: { pothole: 0.4, crack: 0.25, flooded_road: 0.5 },
   cooldownMs: 5000,
   maxFrameGapMs: 1000,
   joltBoost: 0.15,

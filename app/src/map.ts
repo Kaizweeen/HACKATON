@@ -88,6 +88,9 @@ export class HazardMap {
     this.banner.append(this.netChip, this.hubChip, this.queueChip, this.countChip);
     container.append(canvas, this.banner);
 
+    const covered = tiles.bounds
+      ? L.latLngBounds([tiles.bounds.south, tiles.bounds.west], [tiles.bounds.north, tiles.bounds.east])
+      : undefined;
     this.map = L.map(canvas, {
       center: [center.lat, center.lon],
       zoom: center.zoom,
@@ -95,6 +98,7 @@ export class HazardMap {
       maxZoom: tiles.maxZoom,
       zoomControl: false, // added below at the bottom right: the top-left belongs to the status banner
       attributionControl: true,
+      ...(covered ? { maxBounds: covered.pad(0.05), maxBoundsViscosity: 0.9 } : {}),
     });
     L.control.zoom({ position: 'bottomright' }).addTo(this.map);
 
@@ -105,6 +109,7 @@ export class HazardMap {
       errorTileUrl: BLANK_TILE,
       attribution: tiles.attribution,
       keepBuffer: 2,
+      ...(covered ? { bounds: covered } : {}),
     });
     layer.on('tileload', () => (this.tilesLoaded += 1));
     layer.on('tileerror', () => (this.tilesMissing += 1));

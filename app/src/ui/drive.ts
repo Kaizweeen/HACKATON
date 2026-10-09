@@ -5,13 +5,14 @@
  * (smooth preview) and paints the latest detections on top (they update at the 5..10 fps sampling rate).
  */
 
+import { HazardAlerter, type HazardAlert } from '../alerts.js';
 import { Camera, type FrameProvider } from '../camera.js';
 import { CLASS_STYLE } from '../classes.js';
 import { Confirmer } from '../confirmer.js';
 import { DemoSession } from '../demo.js';
 import { createDetector, type Detection } from '../detector.js';
 import { Pipeline, type FrameResult, type PipelineEvent } from '../pipeline.js';
-import { GeoTracker, MotionSensor } from '../sensors.js';
+import { GeoTracker, MotionSensor, type GeoFix } from '../sensors.js';
 import type { AppContext, Rig } from './context.js';
 import { h, setText } from './dom.js';
 
@@ -23,6 +24,15 @@ function sourceSize(src: CanvasImageSource): [number, number] {
   if (src instanceof HTMLVideoElement) return [src.videoWidth, src.videoHeight];
   if (src instanceof HTMLCanvasElement || (typeof OffscreenCanvas !== 'undefined' && src instanceof OffscreenCanvas)) return [src.width, src.height];
   return [0, 0];
+}
+
+/** "just now", "4 min ago", "3 h ago", "2 days ago". */
+function ago(ms: number): string {
+  const min = Math.round(ms / 60_000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min} min ago`;
+  const hours = Math.round(min / 60);
+  return hours < 48 ? `${hours} h ago` : `${Math.round(hours / 24)} days ago`;
 }
 
 export class DriveScreen {
@@ -40,6 +50,8 @@ export class DriveScreen {
   private readonly demoToggle = h('input', { type: 'checkbox', id: 'demo-toggle' });
   private readonly statusLine = h('div', { class: 'status-line', role: 'status' });
   private readonly warning = h('div', { class: 'warn-banner', hidden: true });
+  /** "Pothole ahead, 40 m": the warning a rider gets about hazards that this or another phone found earlier. */
+  private readonly aheadBanner = h('div', { class: 'ahead-banner', role: 'alert', hidden: true });
 
   private camera: Camera | null = null;
   private starting = false;
@@ -50,6 +62,9 @@ export class DriveScreen {
   private raf = 0;
   private ticker: ReturnType<typeof setInterval> | null = null;
   private disposers: (() => void)[] = [];
+  private aheadTimer: ReturnType<typeof setTimeout> | null = null;
+  private checkingAhead = false;
+  private audio: AudioContext | null = null;
 
   constructor(private readonly ctx: AppContext) {
     const g = this.canvas.getContext('2d');
@@ -72,6 +87,7 @@ export class DriveScreen {
         this.canvas,
         h('div', { class: 'hud hud-top' }, this.detectorChip, this.gpsChip),
         h('div', { class: 'hud hud-mode' }, this.modeChip),
+        this.aheadBanner,
         h('div', { class: 'hud hud-bottom' }, this.fpsChip),
         this.toast,
         this.idleCard,
@@ -115,6 +131,7 @@ export class DriveScreen {
   // -----------------------------------------------------------------------------------------------
 
   private async toggle(): Promise<void> {
+    this.unlockAudio(); // browsers allow sound only after a tap: this is the tap
     if (this.ctx.rig || this.starting) await this.stop();
     else await this.start();
   }
@@ -156,6 +173,7 @@ export class DriveScreen {
     this.idleCard.hidden = false;
     this.modeChip.hidden = true;
     this.warning.hidden = true;
+    this.aheadBanner.hidden = true;
     if (rig) this.ctx.log.add('Stopped');
     this.renderStatus('Stopped. Tap Start to drive again.');
     this.refreshIdleCard();
@@ -200,10 +218,14 @@ export class DriveScreen {
   private assemble(mode: Rig['mode'], camera: FrameProvider, detector: Rig['detector'], motion: Rig['motion'], geo: Rig['geo'], demo: DemoSession | null): Rig {
     const confirmer = new Confirmer();
     const pipeline = new Pipeline({ camera, detector, confirmer, motion, geo, store: this.ctx.store, deviceId: this.ctx.deviceId });
+    const alerts = new HazardAlerter(this.ctx.deviceId);
     const unsubscribe = [
       pipeline.onResult((r) => (this.lastResult = { ...r, at: performance.now() })),
       pipeline.onEvent((e) => this.ctx.pipelineEvents.emit(e)),
-      geo.onFix((f) => this.ctx.position.emit(f)),
+      geo.onFix((f) => {
+        this.ctx.position.emit(f);
+        this.checkAhead(alerts, f);
+      }),
     ];
     pipeline.start();
     return {
@@ -214,6 +236,7 @@ export class DriveScreen {
       geo,
       confirmer,
       pipeline,
+      alerts,
       demo,
       stop: () => {
         pipeline.stop();
@@ -226,6 +249,67 @@ export class DriveScreen {
         }
       },
     };
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // hazard-ahead warnings
+  // -----------------------------------------------------------------------------------------------
+
+  private checkAhead(alerts: HazardAlerter, fix: GeoFix): void {
+    if (this.checkingAhead) return; // one store read at a time; GPS fixes come once a second
+    this.checkingAhead = true;
+    void this.ctx.store
+      .getAll()
+      .then((hazards) => {
+        const alert = alerts.update(fix, hazards);
+        if (alert && this.ctx.rig?.alerts === alerts) this.announce(alert);
+      })
+      .catch((err: unknown) => this.ctx.log.add(`Hazard check failed: ${err instanceof Error ? err.message : String(err)}`, 'warn'))
+      .finally(() => (this.checkingAhead = false));
+  }
+
+  private announce(alert: HazardAlert): void {
+    const style = CLASS_STYLE[alert.hazard.cls];
+    const meters = Math.max(5, Math.round(alert.distanceM / 5) * 5);
+    const who = alert.confirmations > 1 ? `seen by ${alert.confirmations} phones` : 'seen by 1 phone';
+    this.aheadBanner.replaceChildren(h('strong', null, `${style.label} ahead`), h('span', null, `${meters} m · ${who} · ${ago(alert.at - alert.hazard.lastSeen)}`));
+    this.aheadBanner.style.setProperty('--hazard', style.color);
+    this.aheadBanner.hidden = false;
+    if (this.aheadTimer) clearTimeout(this.aheadTimer);
+    this.aheadTimer = setTimeout(() => (this.aheadBanner.hidden = true), 6000);
+    navigator.vibrate?.([180, 90, 180]);
+    this.beep();
+    this.ctx.log.add(`Warning: ${style.label} ahead, ${meters} m (${who})`);
+  }
+
+  private unlockAudio(): void {
+    try {
+      const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctor) return;
+      this.audio ??= new Ctor();
+      void this.audio.resume().catch(() => undefined);
+    } catch {
+      /* no sound on this phone: the banner and the vibration still work */
+    }
+  }
+
+  /** Two short high beeps: audible over an engine, and different from any phone notification. */
+  private beep(): void {
+    const audio = this.audio;
+    if (!audio || audio.state !== 'running') return;
+    const t0 = audio.currentTime + 0.01;
+    for (const start of [t0, t0 + 0.22]) {
+      const osc = audio.createOscillator();
+      const gain = audio.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 1320;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.35, start + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.15);
+      osc.connect(gain).connect(audio.destination);
+      osc.start(start);
+      osc.stop(start + 0.16);
+    }
   }
 
   // -----------------------------------------------------------------------------------------------

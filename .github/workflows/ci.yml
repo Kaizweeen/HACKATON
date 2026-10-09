@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: typecheck, tests, build, model checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pip install --quiet numpy onnx onnxruntime
+      - name: model scripts (unit tests; datasets.py is standard library only, evaluate.py needs numpy)
+        run: python -m unittest discover -s model/tests
+      - name: the committed model matches the app contract
+        if: hashFiles('app/public/models/lubak.onnx') != ''
+        run: python model/export_onnx.py --verify app/public/models/lubak.onnx
+
+  rehearsal:
+    name: two-phone rehearsal in Chromium (npm run rehearse)
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      # No road video in the repository (it is built from the dataset), so the phones film Chromium's test pattern: this checks
+      # trusted HTTPS, offline caching, the real model loading, sync through a hub restart and the offline reload, not detection.
+      - run: npm run rehearse -- --seconds 45
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rehearsal-report
+          path: .rehearsal/
+          include-hidden-files: true # .rehearsal is a dot-folder, which upload-artifact skips by default
+          if-no-files-found: warn

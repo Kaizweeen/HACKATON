@@ -17,6 +17,10 @@ import { sanitizeHazard, type RejectReason } from './validate.js';
 import type { SummaryEntry } from './summary.js';
 
 export const WS_PATH = '/ws';
+/** Query parameter that carries the hub's optional event PIN (`wss://<hub>/ws?pin=...`, `/api/hazards?pin=...`). */
+export const HUB_PIN_PARAM = 'pin';
+/** WebSocket close code the hub uses when the event PIN is missing or wrong (4000-4999 are for applications). */
+export const WS_CLOSE_PIN_REQUIRED = 4401;
 /** deviceId the hub uses in its own hello. */
 export const HUB_DEVICE_ID = 'hub';
 

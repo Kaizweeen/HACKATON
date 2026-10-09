@@ -115,6 +115,23 @@ describe('scripted sensors', () => {
     expect(demoRoute().length).toBeGreaterThan(5);
   });
 
+  it('DemoGeo fixes depend only on the lap second, not on frame timing, so every phone puts a hazard in the same cell', () => {
+    // Geohash cells along the demo street are ~19 m long; a fix taken "whenever a frame arrives" moves by up to 7 m
+    // between phones and laps, which split one scripted hazard into two map markers instead of showing x2.
+    const run = (lateMs: (i: number) => number) => {
+      const geo = new DemoGeo();
+      geo.start();
+      const bySecond = new Map<number, string>();
+      geo.onFix((f) => bySecond.set(Math.floor(f.t / 1000), `${f.lat},${f.lon}`));
+      for (let i = 0; i * 125 < script.lapMs; i++) geo.tick(i * 125 + lateMs(i), script.lapMs);
+      return bySecond;
+    };
+    const steady = run(() => 0);
+    const jittery = run((i) => ((i * 37) % 11) * 10); // frames 0..100 ms late, like a busy phone
+    expect(steady.size).toBe(script.lapMs / 1000);
+    for (const [second, fix] of steady) expect(jittery.get(second)).toBe(fix);
+  });
+
   it('DemoGeo emits at most one fix per second', () => {
     const geo = new DemoGeo();
     geo.start();

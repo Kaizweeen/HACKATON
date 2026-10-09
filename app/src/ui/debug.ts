@@ -1,7 +1,7 @@
 /** Debug screen: everything a teammate needs to see while tuning the pipeline, in one place. */
 
 import { HAZARD_CLASSES } from '@lubak/shared';
-import { saveSettings, clampFps, SAMPLE_FPS_MAX, SAMPLE_FPS_MIN, normalizeHubUrl, type DetectorChoice } from '../config.js';
+import { saveSettings, clampFps, SAMPLE_FPS_MAX, SAMPLE_FPS_MIN, normalizeHubUrl, normalizePin, type DetectorChoice } from '../config.js';
 import { describeClockSkew } from './clock.js';
 import type { AppContext } from './context.js';
 import { h, setText } from './dom.js';
@@ -90,6 +90,7 @@ export class DebugScreen {
           { label: 'Detections seen', value: () => String(stats()?.detections ?? 0) },
           { label: 'Confirmed', value: () => `${stats()?.confirmed ?? 0} (${stats()?.boosted ?? 0} boosted by a jolt)` },
           { label: 'Seen but not recorded', value: () => `${stats()?.noFix ?? 0} (no usable GPS fix)`, tone: () => ((stats()?.noFix ?? 0) > 0 ? 'warn' : undefined) },
+          { label: 'Hazard warnings', value: () => { const a = rig()?.alerts.stats; return a ? `${a.warnings}${a.last ? ` · last: ${a.last.hazard.cls} at ${Math.round(a.last.distanceM)} m` : ''}` : '–'; } },
           {
             label: 'Confirmer streaks',
             value: () => {
@@ -221,6 +222,20 @@ export class DebugScreen {
       ctx.log.add(`Hub URL set to ${url}`);
     } }, 'Save');
 
+    const pinInput = h('input', { type: 'text', id: 'hub-pin', value: ctx.config.hubPin ?? '', placeholder: 'none', spellcheck: 'false', autocapitalize: 'off', autocomplete: 'off', 'aria-label': 'Hub event PIN' });
+    const savePin = h('button', { class: 'btn small', type: 'button', onClick: () => {
+      const raw = pinInput.value.trim();
+      const pin = normalizePin(raw);
+      if (raw !== '' && pin === null) {
+        ctx.log.add('A hub PIN is 4 to 32 letters, digits, "-" or "_"; not saved.', 'warn');
+        return;
+      }
+      ctx.config.hubPin = pin;
+      saveSettings({ hubPin: pin ?? '' });
+      ctx.sync.setPin(pin);
+      ctx.log.add(pin ? 'Hub PIN saved; reconnecting.' : 'Hub PIN cleared; reconnecting.');
+    } }, 'Save');
+
     const button = (label: string, onClick: () => void, cls = 'btn small'): HTMLButtonElement => h('button', { class: cls, type: 'button', onClick }, label);
 
     return h(
@@ -230,6 +245,7 @@ export class DebugScreen {
       h('label', { class: 'field' }, h('span', null, 'Detector flag'), detectorSelect),
       h('label', { class: 'field' }, h('span', null, 'Capture rate'), fpsSelect),
       h('label', { class: 'field' }, h('span', null, 'Hub URL'), h('span', { class: 'field-row' }, hubInput, saveHub)),
+      h('label', { class: 'field' }, h('span', null, 'Hub PIN (only if the hub asks for one)'), h('span', { class: 'field-row' }, pinInput, savePin)),
       h(
         'div',
         { class: 'button-row' },
@@ -249,7 +265,7 @@ export class DebugScreen {
       time: new Date().toISOString(),
       userAgent: navigator.userAgent,
       secureContext: window.isSecureContext,
-      config: ctx.config,
+      config: { ...ctx.config, hubPin: ctx.config.hubPin ? '(set)' : null }, // never paste the PIN into a chat
       detector: ctx.rig?.detector.info() ?? ctx.detectorSelection?.detector.info() ?? null,
       pipeline: ctx.rig?.pipeline.stats ?? null,
       motion: ctx.rig?.motion.status() ?? null,

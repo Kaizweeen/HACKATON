@@ -15,7 +15,7 @@
  *   our hazards    pending until the hub's echo shows it holds everything we have (see store.ts)
  */
 
-import { computeDiff, diffMessages, encodeWsMessage, parseWsMessage, type Hazard, type WsMessage } from '@lubak/shared';
+import { computeDiff, diffMessages, encodeWsMessage, HUB_PIN_PARAM, parseWsMessage, WS_CLOSE_PIN_REQUIRED, type Hazard, type WsMessage } from '@lubak/shared';
 import type { HazardStore, StoreChange } from './store.js';
 
 export type SyncState = 'idle' | 'connecting' | 'connected' | 'backoff' | 'offline';
@@ -53,6 +53,8 @@ export interface WebSocketLike {
 
 export interface SyncOptions {
   url: string;
+  /** The hub's event PIN, if it has one. Sent as ?pin= on the socket URL; never shown in `status.url`. */
+  pin?: string | null;
   deviceId: string;
   store: HazardStore;
   log?: (message: string) => void;
@@ -85,6 +87,8 @@ export class SyncClient {
   private readonly createSocket: (url: string) => WebSocketLike;
 
   private url: string;
+  private pin: string | null;
+  private pinRefused = false;
   private ws: WebSocketLike | null = null;
   private generation = 0;
   private started = false;
@@ -116,6 +120,7 @@ export class SyncClient {
 
   constructor(options: SyncOptions) {
     this.url = options.url;
+    this.pin = options.pin ?? null;
     this.deviceId = options.deviceId;
     this.store = options.store;
     this.now = options.now ?? Date.now;
@@ -199,6 +204,27 @@ export class SyncClient {
     else this.emit();
   }
 
+  setPin(pin: string | null): void {
+    if (pin === this.pin) return;
+    this.pin = pin;
+    this.pinRefused = false;
+    this.attempt = 0;
+    if (this.started) this.connect();
+    else this.emit();
+  }
+
+  /** The URL actually dialled: the hub URL plus the event PIN, when there is one. */
+  private socketUrl(): string {
+    if (!this.pin) return this.url;
+    try {
+      const u = new URL(this.url);
+      u.searchParams.set(HUB_PIN_PARAM, this.pin);
+      return u.toString();
+    } catch {
+      return this.url;
+    }
+  }
+
   /** Drop the current connection (if any) and try again immediately. */
   reconnectNow(): void {
     if (!this.started) return;
@@ -229,7 +255,7 @@ export class SyncClient {
 
     let ws: WebSocketLike;
     try {
-      ws = this.createSocket(this.url);
+      ws = this.createSocket(this.socketUrl());
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
       this.scheduleRetry();
@@ -248,6 +274,7 @@ export class SyncClient {
       if (this.connectTimer) clearTimeout(this.connectTimer);
       this.connectTimer = null;
       this.error = null;
+      this.pinRefused = false; // a hub that refuses the PIN closes right after this, with WS_CLOSE_PIN_REQUIRED
       this.everConnected = true;
       this.lastConnectedAt = this.heardAt = this.now();
       this.setState('connected');
@@ -268,8 +295,16 @@ export class SyncClient {
       if (generation !== this.generation) return;
       this.error = this.everConnected ? 'Connection to the hub was lost.' : 'Cannot reach the hub. Is it running, and is this phone on its Wi-Fi / hotspot?';
     };
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
       if (generation !== this.generation) return;
+      if (ev?.code === WS_CLOSE_PIN_REQUIRED) {
+        // Retrying fast will not fix a PIN: say so, and only try again at the slowest backoff (or when the PIN changes).
+        this.pinRefused = true;
+        this.error = this.pin
+          ? 'The hub refused this event PIN. Check it in Debug > Hub PIN (ask whoever runs the hub).'
+          : 'The hub needs the event PIN: open the app with ?pin=... from the hub screen, or enter it in Debug > Hub PIN.';
+        this.log(this.error);
+      }
       this.dropConnection(generation);
     };
   }
@@ -293,7 +328,7 @@ export class SyncClient {
 
   private scheduleRetry(): void {
     this.attempt += 1;
-    const delay = backoffDelayMs(this.attempt, this.random);
+    const delay = this.pinRefused ? BACKOFF_MAX_MS : backoffDelayMs(this.attempt, this.random);
     this.retryAt = this.now() + delay;
     this.setState(typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'backoff');
     this.retryTimer = setTimeout(() => {

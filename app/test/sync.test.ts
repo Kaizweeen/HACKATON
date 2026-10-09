@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createHazard, hazardDigest, mergeHazard, type Hazard, type WsMessage } from '@lubak/shared';
+import { createHazard, hazardDigest, mergeHazard, WS_CLOSE_PIN_REQUIRED, type Hazard, type WsMessage } from '@lubak/shared';
 import { HazardStore } from '../src/store.js';
-import { backoffDelayMs, SyncClient, type WebSocketLike } from '../src/sync.js';
+import { BACKOFF_MAX_MS, backoffDelayMs, SyncClient, type WebSocketLike } from '../src/sync.js';
 
 /** A WebSocket we control by hand. close() on the client side does not fire onclose, like a browser after we detach handlers. */
 class FakeSocket implements WebSocketLike {
@@ -351,6 +351,49 @@ describe('SyncClient: control', () => {
     expect(sockets).toHaveLength(3);
     expect(last().url).toBe('wss://other.test/ws');
     expect(sockets[1]!.closedByClient).toBe(true);
+    client.stop();
+  });
+
+  it('dials with the event PIN but never shows it, says plainly when the hub refuses it, and retries slowly until it changes', async () => {
+    const store = HazardStore.inMemory();
+    const sockets: FakeSocket[] = [];
+    const client = new SyncClient({
+      url: 'wss://hub.test/ws',
+      pin: 'antipolo-26',
+      deviceId: 'dev-me',
+      store,
+      random: () => 0.5,
+      createSocket: (u) => {
+        const s = new FakeSocket(u);
+        sockets.push(s);
+        return s;
+      },
+    });
+    client.start();
+    expect(sockets[0]!.url).toBe('wss://hub.test/ws?pin=antipolo-26');
+    expect(client.status.url).toBe('wss://hub.test/ws');
+
+    // the hub completes the handshake, then closes with 4401
+    sockets[0]!.open();
+    sockets[0]!.readyState = 3;
+    sockets[0]!.onclose?.({ code: WS_CLOSE_PIN_REQUIRED, reason: 'event PIN required' });
+    expect(client.status.state).toBe('backoff');
+    expect(client.status.error).toMatch(/refused this event PIN/);
+    expect(client.status.retryInMs).toBe(BACKOFF_MAX_MS); // not 1 s: retrying fast cannot fix a PIN
+
+    client.setPin('the-right-one');
+    expect(sockets).toHaveLength(2);
+    expect(sockets[1]!.url).toBe('wss://hub.test/ws?pin=the-right-one');
+    sockets[1]!.open();
+    expect(client.status.state).toBe('connected');
+    expect(client.status.error).toBeNull();
+
+    client.setPin(null);
+    expect(sockets[2]!.url).toBe('wss://hub.test/ws');
+    sockets[2]!.open();
+    sockets[2]!.readyState = 3;
+    sockets[2]!.onclose?.({ code: WS_CLOSE_PIN_REQUIRED });
+    expect(client.status.error).toMatch(/needs the event PIN/);
     client.stop();
   });
 

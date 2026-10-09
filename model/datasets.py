@@ -222,26 +222,101 @@ def add_yolo_folder(
     for split, stems in (("train", train), ("val", val)):
         for stem in stems:
             image, label = by_stem[stem]
-            lines: list[str] = []
-            for raw in label.read_text().splitlines():
-                parts = raw.split()
-                if len(parts) < 5:
-                    continue
-                theirs = int(float(parts[0]))
-                if theirs not in class_map:
-                    counts["dropped_boxes"] += 1
-                    continue
-                lines.append(" ".join([str(class_map[theirs]), *parts[1:5]]))
+            lines, dropped = remap_label_lines(label.read_text().splitlines(), class_map)
             write_sample(image, lines, dest_root, split, f"{prefix}_{stem}", link)
             counts[split] += 1
             counts["boxes"] += len(lines)
+            counts["dropped_boxes"] += dropped
+    return counts
+
+
+def label_parts_to_box(parts: Sequence[str]) -> tuple[float, float, float, float] | None:
+    """(cx, cy, w, h), normalised, from one YOLO label line split into fields (class id first).
+
+    Detection lines have 4 numbers. Segmentation lines (Ultralytics' *-seg datasets) have a polygon "x1 y1 x2 y2 ..." of 3 or more
+    points: those become the polygon's bounding box. Reading a polygon's first four numbers as "cx cy w h" would silently produce
+    garbage boxes. Returns None for a malformed or degenerate line.
+    """
+    values = [float(v) for v in parts[1:]]
+    if len(values) == 4:
+        cx, cy, w, h = values
+    elif len(values) >= 6 and len(values) % 2 == 0:
+        xs = [min(max(v, 0.0), 1.0) for v in values[0::2]]
+        ys = [min(max(v, 0.0), 1.0) for v in values[1::2]]
+        w, h = max(xs) - min(xs), max(ys) - min(ys)
+        cx, cy = min(xs) + w / 2, min(ys) + h / 2
+    else:
+        return None
+    if w <= 0 or h <= 0:
+        return None
+    return cx, cy, w, h
+
+
+def remap_label_lines(raw_lines: Iterable[str], class_map: dict[int, int]) -> tuple[list[str], int]:
+    """YOLO label lines with THEIR class ids -> lines with OUR ids, boxes only. Returns (lines, number of dropped boxes)."""
+    lines: list[str] = []
+    dropped = 0
+    for raw in raw_lines:
+        parts = raw.split()
+        if len(parts) < 5:
+            continue
+        theirs = int(float(parts[0]))
+        box = label_parts_to_box(parts)
+        if theirs not in class_map or box is None:
+            dropped += 1
+            continue
+        lines.append(f"{class_map[theirs]} " + " ".join(f"{v:.6f}" for v in box))
+    return lines, dropped
+
+
+# Split folder names used by Roboflow / Ultralytics exports -> ours.
+SPLIT_NAMES: dict[str, str] = {"train": "train", "valid": "val", "val": "val", "test": "test"}
+
+
+def add_yolo_splits(
+    src_root: str | Path,
+    dest_root: str | Path,
+    class_map: dict[int, int],
+    prefix: str,
+    limits: dict[str, int] | None = None,
+    seed: int = 0,
+    link: bool = False,
+) -> dict[str, int]:
+    """Fold a YOLO dataset that already HAS a train / valid / test split (src_root/<split>/images or src_root/images/<split>) into
+    dest_root, keeping its split: a published test split stays unseen until the final measurement.
+
+    limits caps the number of images taken from one of OUR splits (a seeded random sample), e.g. {"train": 1200} to keep a large
+    secondary source from drowning a small primary one. Polygon (segmentation) labels become boxes. Returns counts per split.
+    """
+    src_root, dest_root = Path(src_root), Path(dest_root)
+    counts: dict[str, int] = {"train": 0, "val": 0, "test": 0, "boxes": 0, "dropped_boxes": 0, "images_without_label": 0}
+    for theirs, ours in SPLIT_NAMES.items():
+        for images_dir, labels_dir in ((src_root / theirs / "images", src_root / theirs / "labels"), (src_root / "images" / theirs, src_root / "labels" / theirs)):
+            if not images_dir.is_dir():
+                continue
+            images = sorted(p for p in images_dir.iterdir() if p.suffix.lower() in IMAGE_SUFFIXES)
+            if limits and ours in limits and len(images) > limits[ours]:
+                images = sorted(random.Random(seed).sample(images, limits[ours]))
+            for image in images:
+                label = labels_dir / f"{image.stem}.txt"
+                if not label.exists():
+                    counts["images_without_label"] += 1
+                    continue
+                lines, dropped = remap_label_lines(label.read_text().splitlines(), class_map)
+                write_sample(image, lines, dest_root, ours, f"{prefix}_{image.stem}", link)
+                counts[ours] += 1
+                counts["boxes"] += len(lines)
+                counts["dropped_boxes"] += dropped
     return counts
 
 
 def write_data_yaml(dest_root: str | Path, classes: Sequence[str] = CLASSES) -> Path:
     """data.yaml for Ultralytics. Class ORDER is the contract with the app: do not reorder."""
     dest_root = Path(dest_root).resolve()
-    lines = [f"path: {dest_root}", "train: images/train", "val: images/val", f"nc: {len(classes)}", "names:"]
+    lines = [f"path: {dest_root}", "train: images/train", "val: images/val"]
+    if (dest_root / "images" / "test").is_dir():
+        lines.append("test: images/test")
+    lines += [f"nc: {len(classes)}", "names:"]
     lines += [f"  {i}: {name}" for i, name in enumerate(classes)]
     path = dest_root / "data.yaml"
     path.write_text("\n".join(lines) + "\n")
@@ -252,7 +327,9 @@ def class_histogram(dest_root: str | Path, classes: Sequence[str] = CLASSES) -> 
     """Box counts per class and split, from the label files. Read this before training: a class with a few dozen boxes will not learn."""
     dest_root = Path(dest_root)
     out: dict[str, dict[str, int]] = {}
-    for split in ("train", "val"):
+    for split in ("train", "val", "test"):
+        if split == "test" and not (dest_root / "images" / "test").exists():
+            continue
         counts = {name: 0 for name in classes}
         images = len(list((dest_root / "images" / split).glob("*"))) if (dest_root / "images" / split).exists() else 0
         for label in (dest_root / "labels" / split).glob("*.txt") if (dest_root / "labels" / split).exists() else []:
@@ -264,7 +341,7 @@ def class_histogram(dest_root: str | Path, classes: Sequence[str] = CLASSES) -> 
 
 
 def check_no_leakage(dest_root: str | Path) -> list[str]:
-    """Names present in both train and val (should be empty)."""
+    """Names present in more than one of train / val / test (should be empty)."""
     dest_root = Path(dest_root)
-    names = {s: {p.stem for p in (dest_root / "images" / s).glob("*")} for s in ("train", "val")}
-    return sorted(names["train"] & names["val"])
+    names = {s: {p.stem for p in (dest_root / "images" / s).glob("*")} for s in ("train", "val", "test")}
+    return sorted((names["train"] & names["val"]) | (names["train"] & names["test"]) | (names["val"] & names["test"]))

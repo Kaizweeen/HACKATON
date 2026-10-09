@@ -1,0 +1,5 @@
+Map tiles rendered by app/scripts/offline_tiles.py from OpenStreetMap data published by Overture Maps
+(release 2026-09-23.1; transportation, base, buildings and divisions themes).
+Data: (c) OpenStreetMap contributors, Overture Maps Foundation. Licence: ODbL 1.0, https://opendatacommons.org/licenses/odbl/
+Area: detail (121.15, 14.56, 121.21, 14.615) at zoom 15-17, wider area (121.05, 14.48, 121.3, 14.7) at zoom 12-14 (west, south, east, north).
+Real tiles: app/scripts/make-placeholder-tiles.mjs refuses to overwrite this folder while this file exists.

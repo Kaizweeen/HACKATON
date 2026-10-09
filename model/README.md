@@ -1,8 +1,8 @@
 # model: YOLOv8n for potholes, cracks and flooded roads
 
 Everything needed to go from "labelled road photos" to the one file the app loads, **`app/public/models/lubak.onnx`**.
-No model is trained or included yet: the repository has the pipeline, the checks and a Colab outline, not weights, and **no accuracy figure exists**
-([`RESULTS.md`](RESULTS.md) is where the real ones go, once somebody measures them).
+The committed model is a **first baseline trained on public data only** (potholes and cracks; no flooded roads, no Philippine roads):
+how it was made and what it measured are in [`RESULTS.md`](RESULTS.md), and every number there can be reproduced with the commands below.
 
 | file | what it is |
 | --- | --- |
@@ -11,9 +11,12 @@ No model is trained or included yet: the repository has the pipeline, the checks
 | [`datasets.py`](datasets.py) | RDD2022 (Pascal VOC) to YOLO labels with our three classes, leakage-aware split, fold-in of other YOLO datasets (the flood images) |
 | [`evaluate.py`](evaluate.py) | precision / recall per class at the confidence thresholds you are choosing between |
 | [`tools/parity_ref.py`](tools/parity_ref.py) | Ultralytics reference outputs so `npm test` can prove the app decodes your model identically |
+| [`tools/build_public_dataset.py`](tools/build_public_dataset.py) | downloads (pinned) the public pothole and crack datasets the baseline was trained on and assembles them, keeping their train / val / test splits |
+| [`tools/evaluate_onnx.py`](tools/evaluate_onnx.py) | measures the exported ONNX itself, through the same letterbox + NMS as the app: picks thresholds on `val`, reports them on `test` |
+| [`tools/make_camera_video.py`](tools/make_camera_video.py) | road photos -> a `.y4m` video for Chromium's fake camera, used by `npm run rehearse` |
 | [`tools/make_dummy_onnx.py`](tools/make_dummy_onnx.py) | a TEST-ONLY model with the right shapes, so the app's whole inference path can be exercised before training finishes |
 | [`RESULTS.md`](RESULTS.md) | template for what you measured. Empty on purpose |
-| [`tests/`](tests) | `python -m unittest discover -s model/tests` (standard library only) |
+| [`tests/`](tests) | `python -m unittest discover -s model/tests` (standard library plus numpy, no torch) |
 
 ## The contract with the app
 
@@ -37,7 +40,19 @@ input size, change `MODEL_INPUT_SIZE` in `app/src/config.ts` too; the class list
 * **Local data beats everything**: a few hundred labelled frames from the actual phone mount on Antipolo roads will teach the model more about the demo than thousands of foreign images.
 * Split in contiguous blocks, never per frame: neighbouring frames look alike, and a per-frame split makes every metric look better than reality.
 
-## Workflow
+## Reproduce the committed baseline on a laptop (CPU, about 2 hours)
+
+```bash
+python -m venv .venv && .venv/bin/pip install -r model/requirements.txt
+.venv/bin/python model/tools/build_public_dataset.py              # model/work/dataset: 1665 train / 333 val / 179 test images
+cd model && ../.venv/bin/yolo detect train model=yolov8n.pt data=work/dataset/data.yaml imgsz=320 epochs=60 patience=20 \
+    batch=32 workers=3 cache=ram device=cpu seed=0 deterministic=True project=runs name=lubak_public_v1 && cd ..
+.venv/bin/python model/export_onnx.py --weights model/runs/lubak_public_v1/weights/best.pt
+.venv/bin/python model/tools/evaluate_onnx.py --split val          # thresholds for the app
+.venv/bin/python model/tools/evaluate_onnx.py --split test --use val   # the numbers you may quote
+```
+
+## Workflow with your own data
 
 1. Open the notebook in Colab (GPU), fill the TODOs, run it. Train, then look at the evaluation cell's per-class precision / recall table.
 2. Choose a confidence threshold per class (the notebook shows how) and put them in `DEFAULT_CONFIRMER_CONFIG.thresholds` (`app/src/confirmer.ts`).

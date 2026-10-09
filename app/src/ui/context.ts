@@ -1,3 +1,4 @@
+import type { HazardAlerter } from '../alerts.js';
 import type { FrameProvider } from '../camera.js';
 import type { AppConfig } from '../config.js';
 import type { Confirmer } from '../confirmer.js';
@@ -18,6 +19,8 @@ export interface Rig {
   geo: LocationSource;
   confirmer: Confirmer;
   pipeline: Pipeline;
+  /** Hazard-ahead warnings for this drive. */
+  alerts: HazardAlerter;
   demo: DemoSession | null;
   stop(): void;
 }

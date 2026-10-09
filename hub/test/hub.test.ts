@@ -2,10 +2,11 @@ import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { HOUR_MS, summarize, TTL_MS } from '@lubak/shared';
+import { HOUR_MS, HUB_PIN_PARAM, summarize, TTL_MS, WS_CLOSE_PIN_REQUIRED } from '@lubak/shared';
 import { ensureTls, type TlsMaterial } from '../src/certs.js';
-import { createHub, type Hub } from '../src/hub.js';
+import { createHub, pinAccepted, type Hub } from '../src/hub.js';
 import { silentLogger } from '../src/log.js';
 import { HazardStore } from '../src/store.js';
 import { hazard, T0, tempDir, TestClient } from './harness.js';
@@ -34,7 +35,7 @@ afterEach(async () => {
 });
 afterAll(() => undefined);
 
-async function startRig(over: { sweepMs?: number; snapshotMs?: number; staticDir?: string; withStatic?: boolean } = {}): Promise<Rig> {
+async function startRig(over: { sweepMs?: number; snapshotMs?: number; staticDir?: string; withStatic?: boolean; pin?: string } = {}): Promise<Rig> {
   let clock = T0 + 1000;
   const dataDir = tempDir();
   const staticDir = over.staticDir ?? tempDir();
@@ -55,6 +56,7 @@ async function startRig(over: { sweepMs?: number; snapshotMs?: number; staticDir
       snapshotMs: over.snapshotMs ?? 60_000,
       sweepMs: over.sweepMs ?? 60_000,
       heartbeatMs: 60_000,
+      pin: over.pin ?? null,
     },
     tls: { key: tls.key, cert: tls.cert },
     store,
@@ -315,6 +317,59 @@ describe('HTTPS and static files', () => {
     expect((await get(`${rig.baseUrl}/sw.js`)).headers['cache-control']).toBe('no-cache');
     expect((await get(`${rig.baseUrl}/assets/app-abc123.js`)).headers['cache-control']).toBe('public, max-age=31536000, immutable');
     expect((await get(`${rig.baseUrl}/model.onnx`)).status).toBe(200);
+  });
+
+  it('gzips what compresses (the onnxruntime WASM is most of a first visit over the hotspot), only for clients that ask', async () => {
+    const staticDir = tempDir();
+    const wasm = Buffer.from('\0asm'.repeat(20_000)); // compressible, like the real runtime
+    fs.writeFileSync(path.join(staticDir, 'index.html'), '<!doctype html><title>Lubak</title>');
+    fs.mkdirSync(path.join(staticDir, 'assets'));
+    fs.writeFileSync(path.join(staticDir, 'assets', 'ort-abc123.wasm'), wasm);
+    const rig = await startRig({ staticDir });
+    const raw = await new Promise<{ encoding: string | undefined; body: Buffer }>((resolve, reject) => {
+      https
+        .get(`${rig.baseUrl}/assets/ort-abc123.wasm`, { ca: tls.caCertPem, agent: false, headers: { 'Accept-Encoding': 'gzip' } }, (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (d: Buffer) => chunks.push(d));
+          res.on('end', () => resolve({ encoding: res.headers['content-encoding'], body: Buffer.concat(chunks) }));
+        })
+        .on('error', reject);
+    });
+    expect(raw.encoding).toBe('gzip');
+    expect(raw.body.length).toBeLessThan(wasm.length / 10);
+    expect(zlib.gunzipSync(raw.body).equals(wasm)).toBe(true);
+    expect((await get(`${rig.baseUrl}/assets/ort-abc123.wasm`)).headers['content-encoding']).toBeUndefined();
+  });
+
+  it('with an event PIN, a phone without it is closed with 4401 and learns nothing; with it, it syncs', async () => {
+    const rig = await startRig({ pin: 'antipolo-26' });
+    rig.store.ingest(hazard());
+    for (const url of [rig.wsUrl, `${rig.wsUrl}?pin=wrong-pin`]) {
+      const stranger = await TestClient.connect(url, { ca: tls.caCertPem });
+      await waitUntil(() => stranger.closedWith !== null);
+      expect(stranger.closedWith).toEqual({ code: WS_CLOSE_PIN_REQUIRED, reason: 'event PIN required' });
+      expect(stranger.inbox).toEqual([]);
+      expect(rig.hub.stats().clients).toBe(0);
+    }
+    const member = await TestClient.connect(`${rig.wsUrl}?${HUB_PIN_PARAM}=antipolo-26`, { ca: tls.caCertPem });
+    const hello = await member.waitFor('hello');
+    expect(hello.summary).toHaveLength(1);
+    expect(member.closedWith).toBeNull();
+
+    expect((await get(`${rig.baseUrl}/api/hazards`)).status).toBe(401);
+    expect((await get(`${rig.baseUrl}/api/hazards?pin=nope`)).status).toBe(401);
+    expect(JSON.parse((await get(`${rig.baseUrl}/api/hazards?pin=antipolo-26`)).body)).toHaveLength(1);
+    expect((await get(`${rig.baseUrl}/`)).status).toBe(200); // the app itself is public: it holds no hazards
+    expect((await get(`${rig.baseUrl}/healthz`)).status).toBe(200);
+  });
+
+  it('pinAccepted: open without a PIN, exact match otherwise', () => {
+    expect(pinAccepted(null, undefined)).toBe(true);
+    expect(pinAccepted(null, 'anything')).toBe(true);
+    expect(pinAccepted('1234', '1234')).toBe(true);
+    expect(pinAccepted('1234', '12345')).toBe(false);
+    expect(pinAccepted('1234', '')).toBe(false);
+    expect(pinAccepted('1234', null)).toBe(false);
   });
 
   it('answers 404 for missing files (map tiles!) instead of falling back to index.html', async () => {

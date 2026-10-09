@@ -26,6 +26,7 @@ flowchart LR
   ws["<b>WebSocket client</b><br/>hello, then diff + hazard updates"]:::shared
   hub["<b>Hub</b><br/>express + ws over HTTPS<br/>merge every hazard · answer hello with diff<br/>broadcast · JSON snapshot every 10 s · sweep expired"]:::shared
   others["<b>Other phones</b><br/>apply diff, merge,<br/>update store + map"]:::shared
+  ahead["<b>Hazard ahead</b><br/>nearest known hazard in the<br/>direction of travel, ~6 s away:<br/>banner + beep + vibration"]:::shared
   fake["<b>Fake device tool</b><br/>hazards near Antipolo, Rizal"]:::dashed
 
   model --> det
@@ -42,6 +43,9 @@ flowchart LR
   save --> reach
   reach -- NO --> queue -- on reconnect --> reach
   reach -- YES --> ws --> hub --> others
+  others --> ahead
+  save --> ahead
+  gps --> ahead
   fake -.-> hub
 
   classDef sense fill:#dbe8ff,stroke:#3b6fd4,color:#111
@@ -128,7 +132,8 @@ Anything that needs a real browser is marked **browser**: it was checked by jour
 | Chart | Code | Checked by |
 | --- | --- | --- |
 | **Save locally**: IndexedDB + shared mergeHazard + pending-sync flag (`IndexedDB store`, arrow `confirmed hazard`) | [`app/src/store.ts`](../app/src/store.ts) (`planWrite`, IndexedDB through `idb`, in-memory fallback) | flowchart *Save locally*: stored and flagged with no hub, same spot merges, another phone's report merged with the shared function · `app/test/store.test.ts` · **browser**: the real IndexedDB, across reloads |
-| **Offline map**: Leaflet, colour per class, confirmation count, local tiles (arrow `render`) | [`app/src/map.ts`](../app/src/map.ts), `ui/map-screen.ts`, `classes.ts`; tiles are served from `app/public/tiles` | flowchart *Offline map*: fed by the local store alone, one colour per class, count from the confirming devices, tile URLs on the app's own origin · **browser**: markers, badges, legend, tiles in airplane mode · tiles themselves: placeholders only, see [`app/public/tiles/README.md`](../app/public/tiles/README.md) |
+| **Offline map**: Leaflet, colour per class, confirmation count, local tiles (arrow `render`) | [`app/src/map.ts`](../app/src/map.ts), `ui/map-screen.ts`, `classes.ts`; tiles are served from `app/public/tiles` | flowchart *Offline map*: fed by the local store alone, one colour per class, count from the confirming devices, tile URLs on the app's own origin · **browser** (`npm run rehearse`): markers, badges, legend, tiles from the phone in airplane mode · the tiles are real OpenStreetMap data of Antipolo rendered by `app/scripts/offline_tiles.py`, see [`app/public/tiles/README.md`](../app/public/tiles/README.md) |
+| **Hazard ahead**: the nearest known hazard in the direction of travel, about 6 s away, as a banner, two beeps and a vibration | [`app/src/alerts.ts`](../app/src/alerts.ts) (`HazardAlerter`), shown by `ui/drive.ts` | `app/test/alerts.test.ts`: ahead vs behind, distance from speed, once per approach, re-armed after leaving, not for what this phone just confirmed, direction from consecutive fixes · **browser** (`npm run rehearse`): the phone driving 15 s behind is warned |
 
 ### Share
 
@@ -153,10 +158,11 @@ Anything that needs a real browser is marked **browser**: it was checked by jour
 5. **Demo Mode replaces more than the detector.** It also replaces the camera frames, GPS and jolts, so two phones confirm the same places along the Antipolo route and the map shows ×2. Everything after the detector is the real confirmer, store, sync and map.
 6. **`hello` carries a content digest.** Summary entries are `{id, lastSeen, d}`, not just id and lastSeen: `lastSeen` alone cannot reveal a missing confirmation. The reasoning and the convergence tests are in [`shared/README.md`](../shared/README.md).
 7. **"Self-signed TLS".** The hub makes its own certificate authority and signs a certificate with it (so a phone trusts the CA once), or uses mkcert when that is installed.
-8. **`lubak.onnx` does not exist yet.** The box is real and wired; the weights are still to be trained, so the app shows a red MOCK badge until the file is added. No accuracy figure exists anywhere in the repo.
+8. **`lubak.onnx` is a public-data baseline.** The box is real, wired and filled: YOLOv8n fine-tuned on public pothole and crack photos, with what it measured on held-out photos in [`model/RESULTS.md`](../model/RESULTS.md). It has never seen a flooded road or a Philippine road, so the `flooded_road` class never fires. If the file is missing the app shows a red MOCK badge instead of pretending.
 
 ## 5. What this proves, and what it does not
 
 * The tests run the **real app and hub code** in Node. Replaced by fakes: the camera, the sensors, Leaflet, IndexedDB (an in-memory backend with the same interface) and the neural network itself (a canned YOLOv8-shaped output; the real graph was exercised separately in a browser).
 * To check the tests have teeth, each behaviour above was broken on purpose, one at a time (the confirmation count, the reconnect timer, the hub's merge, the TLS server, the NMS, and more): every one made at least one flowchart test fail, and the files were restored byte for byte.
-* **Not verified:** any of this on a real phone, in a real vehicle, on a real hotspot, with a real GPU's WebGPU, or on iOS; and nothing about how well a trained model will detect anything, because there is none.
+* `npm run rehearse` adds the browser half: two emulated phones in Chromium with the real model on a fake camera fed by held-out road photos, the real hub (with an outage), the hazard-ahead warning and an airplane-mode reload. Its last report is in [`docs/rehearsal/report.md`](rehearsal/report.md).
+* **Not verified:** any of this on a real phone, in a real vehicle, on a real hotspot, with a real GPU's WebGPU, or on iOS; and how well the model detects hazards on Antipolo roads from a handlebar mount (its numbers are on public photos).

@@ -11,12 +11,19 @@ import { encodePng } from './png.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const { values } = parseArgs({
   options: {
-    center: { type: 'string', default: '14.585,121.176' },
+    center: { type: 'string', default: '14.58471,121.175709' },
     'radius-km': { type: 'string', default: '3' },
     zooms: { type: 'string', default: '12-16' },
     out: { type: 'string', default: path.resolve(here, '../public/tiles') },
+    force: { type: 'boolean', default: false },
   },
 });
+
+if (fs.existsSync(path.join(values.out, 'ATTRIBUTION.txt')) && !values.force) {
+  console.error(`${values.out} holds real rendered map tiles (see ATTRIBUTION.txt there); not overwriting them with placeholders.`);
+  console.error('Use --out <another folder>, or --force if you really want to replace the map with a grid.');
+  process.exit(1);
+}
 
 const [lat, lon] = values.center.split(',').map(Number);
 const radiusKm = Number(values['radius-km']);

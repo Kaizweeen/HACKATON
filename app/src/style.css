@@ -71,6 +71,18 @@ h3 { font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; color: 
   background: rgba(14, 17, 22, .92); border: 1px solid var(--line); border-radius: 12px; padding: 10px 16px; font-weight: 700; max-width: 90%; text-align: center; pointer-events: none;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+/* "Pothole ahead": the most important thing on the screen while riding, readable at arm's length in sunlight */
+.ahead-banner {
+  position: absolute; left: 10px; right: 10px; top: 84px; z-index: 3; /* below the DEMO MODE chip, which must stay visible */
+  display: flex; flex-direction: column; gap: 2px; padding: 12px 16px;
+  background: rgba(14, 17, 22, .94); border: 2px solid var(--hazard, #d93025); border-left-width: 12px; border-radius: 14px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .45); animation: ahead-pulse 1s ease-in-out 3;
+}
+.ahead-banner[hidden] { display: none; }
+.ahead-banner strong { font-size: 1.6rem; line-height: 1.15; letter-spacing: .01em; }
+.ahead-banner span { font-size: 1rem; color: #e6e9ee; }
+@keyframes ahead-pulse { 50% { box-shadow: 0 0 0 6px var(--hazard, #d93025); } }
+@media (prefers-reduced-motion: reduce) { .ahead-banner { animation: none; } }
 .idle-card {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(92%, 30rem); max-height: 92%; overflow: auto;
   background: rgba(22, 27, 34, .94); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px;

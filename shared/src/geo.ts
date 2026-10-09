@@ -84,12 +84,17 @@ export function pointAlongPath(path: readonly LatLon[], distanceM: number, loop 
 // ---------------------------------------------------------------------------------------------------
 
 /** Centre of the test area (Antipolo, Rizal). */
-export const DEMO_CENTER: Readonly<LatLon> = Object.freeze({ lat: 14.585, lon: 121.176 });
+/** Antipolo, Rizal: the corner of M. L. Quezon Street and Juan Sumulong Street, on the road. */
+export const DEMO_CENTER: Readonly<LatLon> = Object.freeze({ lat: 14.58471, lon: 121.175709 });
 
-/** (north, east) metre offsets from the centre that make up the loop. */
+/**
+ * (north, east) metre offsets from the centre that make up the loop: 3.3 km of real streets (OpenStreetMap via Overture Maps,
+ * traced by `app/scripts/offline_tiles.py route`), south on M. L. Quezon Street first, so Demo Mode's lap stays on one street.
+ */
 export const DEMO_ROUTE_OFFSETS_M: readonly (readonly [number, number])[] = [
-  [0, 0], [180, 140], [380, 230], [620, 220], [850, 330], [980, 560], [930, 820],
-  [740, 1010], [470, 1060], [230, 930], [80, 690], [-60, 420], [0, 0],
+  [0, 0], [-435.5, 7.3], [-1042.4, 104.8], [-1046.9, -291], [-961.9, -468.6], [-953.3, -451.5],
+  [-937.3, -436.8], [-920.1, -426.8], [-893.7, -418.3], [-491.3, -374.6], [-466.9, -201.4], [-329.5, -221.5],
+  [-254.8, -220.5], [-143.1, -270.7], [-73.7, -274.3], [120.7, -292.2], [129.4, -1.2], [0, 0],
 ];
 
 export function demoRoute(center: LatLon = DEMO_CENTER): LatLon[] {

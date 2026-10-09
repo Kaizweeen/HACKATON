@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { videoConstraints } from '../src/camera.js';
-import { clampFps, defaultHubUrl, loadConfig, normalizeHubUrl, SAMPLE_FPS_MAX, SAMPLE_FPS_MIN } from '../src/config.js';
+import { clampFps, defaultHubUrl, loadConfig, normalizeHubUrl, normalizePin, SAMPLE_FPS_MAX, SAMPLE_FPS_MIN } from '../src/config.js';
 
 const https = { protocol: 'https:', host: '192.168.43.2:8443' };
 
@@ -28,6 +28,14 @@ describe('config', () => {
   it('asks the browser for the camera it was configured with, as a preference (a laptop has only one)', () => {
     expect(videoConstraints('rear').facingMode).toEqual({ ideal: 'environment' });
     expect(videoConstraints('front').facingMode).toEqual({ ideal: 'user' });
+  });
+
+  it('takes the hub event PIN from ?pin= when it looks like one, and has none by default', () => {
+    expect(loadConfig('', https).hubPin).toBeNull();
+    expect(loadConfig('?pin=antipolo-26', https).hubPin).toBe('antipolo-26');
+    expect(loadConfig('?pin=12', https).hubPin).toBeNull();
+    expect(loadConfig('?pin=a%20b%26c', https).hubPin).toBeNull();
+    expect([normalizePin(' 4821 '), normalizePin(''), normalizePin(null), normalizePin('x'.repeat(33))]).toEqual(['4821', null, null, null]);
   });
 
   it('plain http pages use ws://', () => {
