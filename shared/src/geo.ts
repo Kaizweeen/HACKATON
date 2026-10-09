@@ -77,3 +77,21 @@ export function pointAlongPath(path: readonly LatLon[], distanceM: number, loop 
   /* c8 ignore next */
   return { ...path[path.length - 1]!, headingDeg: 0 };
 }
+
+// ---------------------------------------------------------------------------------------------------
+// Synthetic test route near Antipolo, Rizal. Shared by the hub's fake device and the app's Demo Mode so
+// both exercise the same stretch of "road". It is a made-up loop of about 3.3 km, NOT map-matched.
+// ---------------------------------------------------------------------------------------------------
+
+/** Centre of the test area (Antipolo, Rizal). */
+export const DEMO_CENTER: Readonly<LatLon> = Object.freeze({ lat: 14.585, lon: 121.176 });
+
+/** (north, east) metre offsets from the centre that make up the loop. */
+export const DEMO_ROUTE_OFFSETS_M: readonly (readonly [number, number])[] = [
+  [0, 0], [180, 140], [380, 230], [620, 220], [850, 330], [980, 560], [930, 820],
+  [740, 1010], [470, 1060], [230, 930], [80, 690], [-60, 420], [0, 0],
+];
+
+export function demoRoute(center: LatLon = DEMO_CENTER): LatLon[] {
+  return DEMO_ROUTE_OFFSETS_M.map(([north, east]) => offsetMeters(center, north, east));
+}

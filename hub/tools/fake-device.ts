@@ -21,6 +21,8 @@ import { WebSocket } from 'ws';
 import {
   computeDiff,
   createHazard,
+  demoRoute,
+  DEMO_CENTER,
   diffMessages,
   encodeWsMessage,
   newDeviceId,
@@ -78,19 +80,13 @@ const gaussian = (rng: () => number): number => {
 // --------------------------------------------------------------------------------------------------
 // the synthetic world
 // --------------------------------------------------------------------------------------------------
-/** A made-up loop of roughly 3.3 km, expressed as (north, east) metre offsets from the centre. Not map-matched. */
-const ROUTE_OFFSETS_M: readonly [number, number][] = [
-  [0, 0], [180, 140], [380, 230], [620, 220], [850, 330], [980, 560], [930, 820],
-  [740, 1010], [470, 1060], [230, 930], [80, 690], [-60, 420], [0, 0],
-];
-
 interface Spot {
   cls: HazardClass;
   at: LatLon;
 }
 
 function buildSpots(center: LatLon, count: number, rng: () => number): Spot[] {
-  const route = ROUTE_OFFSETS_M.map(([n, e]) => offsetMeters(center, n, e));
+  const route = demoRoute(center);
   const total = polylineLengthMeters(route);
   const spots: Spot[] = [];
   let previous: HazardClass = 'pothole';
@@ -277,7 +273,7 @@ async function main(): Promise<void> {
   const jitterM = values.jitter === undefined ? 2 : Math.max(0, Number(values.jitter));
   const seed = values.seed === undefined ? 1 : Number(values.seed);
   const limit = values.count === undefined ? Infinity : Math.floor(positiveNumber(values.count, 1, 'count'));
-  const [clat, clon] = (values.center ?? '14.585,121.176').split(',').map(Number);
+  const [clat, clon] = (values.center ?? `${DEMO_CENTER.lat},${DEMO_CENTER.lon}`).split(',').map(Number);
   if (clat === undefined || clon === undefined || !Number.isFinite(clat) || !Number.isFinite(clon)) {
     throw new Error('--center must look like 14.585,121.176');
   }

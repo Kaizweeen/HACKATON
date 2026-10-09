@@ -6,12 +6,15 @@
   "type": "module",
   "workspaces": [
     "shared",
-    "hub"
+    "hub",
+    "app"
   ],
   "engines": {
     "node": ">=22.12.0"
   },
   "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build -w @lubak/app",
     "start": "npm run hub",
     "hub": "tsx hub/src/index.ts",
     "fake-device": "tsx hub/tools/fake-device.ts",

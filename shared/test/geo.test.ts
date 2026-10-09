@@ -41,3 +41,15 @@ describe('geo helpers', () => {
     for (const id of ids) expect(id).toMatch(/^[0-9a-f]{16}$/);
   });
 });
+
+describe('demo route', () => {
+  it('is a closed loop of roughly 3 km starting and ending at the Antipolo centre', async () => {
+    const { demoRoute, DEMO_CENTER } = await import('../src/index.js');
+    const route = demoRoute();
+    expect(haversineMeters(route[0]!, DEMO_CENTER)).toBeLessThan(0.01);
+    expect(haversineMeters(route[0]!, route[route.length - 1]!)).toBeLessThan(0.01);
+    expect(polylineLengthMeters(route)).toBeGreaterThan(2500);
+    expect(polylineLengthMeters(route)).toBeLessThan(4500);
+    for (const p of route) expect(haversineMeters(p, DEMO_CENTER)).toBeLessThan(1500);
+  });
+});
