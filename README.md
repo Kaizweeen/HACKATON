@@ -15,6 +15,8 @@ camera ─▶ detector ─▶ confirmer ─▶ store (IndexedDB) ◀─▶ sync 
 sensors: jolts, GPS ─▶ (confirmer)   map (Leaflet, tiles from the app's own folder)
 ```
 
+The full flowchart and architecture, every box and arrow mapped to the code that implements it and the test that checks it: **[`docs/flowchart.md`](docs/flowchart.md)**.
+
 ## Status: what runs today, and what is a stub
 
 **Runs and is tested**
@@ -41,6 +43,8 @@ shared/   TypeScript contract: types, merge, expiry, geohash, WebSocket messages
 hub/      Node + TypeScript server (express, ws, HTTPS), tools/fake-device
 app/      Vite + plain TypeScript PWA: camera, detector, confirmer, sensors, store, sync, map, screens, demo
 model/    YOLOv8n training notebook, dataset conversion, ONNX export + verification, evaluation. Start here: model/README.md
+test/     the flowchart as a test: the real app code talking to the real hub, in one process
+docs/     flowchart.md: the flowchart and the architecture as diagrams, mapped to code and tests
 scripts/  dev.mjs (hub + app dev server together)
 ```
 
@@ -149,7 +153,7 @@ The script has ten encounters: eight should confirm and two must be rejected (a 
 
 ## Configuration reference
 
-**App URL flags:** `?detector=auto|mock|onnx` · `?model=/models/other.onnx` · `?fps=5..10` (default 8) · `?hub=wss://<ip>:8443/ws` · `?demo=1`. The query beats the Debug screen's saved settings, which beat build-time `VITE_*` values.
+**App URL flags:** `?detector=auto|mock|onnx` · `?model=/models/other.onnx` · `?fps=5..10` (default 8) · `?hub=wss://<ip>:8443/ws` · `?demo=1` · `?camera=rear|front` (default rear: the back camera faces the road when the phone is mounted; front is for testing). The query beats the Debug screen's saved settings, which beat build-time `VITE_*` values.
 **App build-time:** `VITE_DETECTOR`, `VITE_TILE_ATTRIBUTION` (default "© OpenStreetMap contributors (offline tiles)"; change it if your tiles come from elsewhere).
 
 **Hub** (`npm run hub -- --help`):
@@ -229,7 +233,7 @@ First: (1) render real offline tiles for the demo area (QGIS recipe in `app/publ
 
 ## Working on the code
 
-* TypeScript is strict everywhere; `npm run typecheck` covers `shared`, `hub` and `app`. Tests live in each package's `test/` folder (`npm test` runs them all; `npm run test:watch` while developing). The model scripts have their own: `python -m unittest discover -s model/tests`.
+* TypeScript is strict everywhere; `npm run typecheck` covers `shared`, `hub`, `app` and the root tests. Tests live in each package's `test/` folder, and `test/` at the root holds the one that crosses all of them: `test/flowchart.test.ts` walks the flowchart box by box with the real code on both sides of every arrow (`npm test` runs everything; `npm run test:watch` while developing). If it fails, the code stopped doing what [`docs/flowchart.md`](docs/flowchart.md) says: fix the code, or change the chart on purpose. The model scripts have their own: `python -m unittest discover -s model/tests`.
 * `shared/` has no dependencies and runs in browsers and Node. If you change it, both sides change: run everything.
 * Keep the debugging surface in the Debug screen up to date when you add a stage to the pipeline; it is how everyone else sees what you built.
 * Before committing: no private keys, no `dist/`, no downloaded datasets, no test ONNX files. The `.gitignore` covers the usual suspects; check `git status`.
