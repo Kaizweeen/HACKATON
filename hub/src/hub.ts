@@ -120,6 +120,8 @@ export function createHub(opts: HubOptions): Hub {
   app.disable('x-powered-by');
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    // No COOP/COEP (cross-origin isolation) on purpose: it would let onnxruntime-web run WASM on threads, but its worker
+    // threads load the Vite bundle, which touches `document`, and the detector then never starts. Single-threaded is tested.
     next();
   });
   // gzip on the way out: the onnxruntime WASM shrinks from ~27 MB to ~7 MB, which is what every phone downloads over the
