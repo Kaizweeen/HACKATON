@@ -16,7 +16,7 @@ how it was made and what it measured are in [`RESULTS.md`](RESULTS.md), and ever
 | [`tools/make_camera_video.py`](tools/make_camera_video.py) | road photos -> a `.y4m` video for Chromium's fake camera, used by `npm run rehearse` |
 | [`tools/make_dummy_onnx.py`](tools/make_dummy_onnx.py) | a TEST-ONLY model with the right shapes, so the app's whole inference path can be exercised before training finishes |
 | [`RESULTS.md`](RESULTS.md) | template for what you measured. Empty on purpose |
-| [`tests/`](tests) | `python -m unittest discover -s model/tests` (standard library only) |
+| [`tests/`](tests) | `python -m unittest discover -s model/tests` (standard library plus numpy, no torch) |
 
 ## The contract with the app
 
