@@ -97,7 +97,7 @@ If a phone cannot reach it: allow Node through the laptop firewall on *private* 
 > **The address is part of the app's identity.** A phone caches the app per origin (`https://<ip>:8443`). If the laptop's address changes, the phone sees a *new* site with an empty cache: open the new address once while connected and let it cache again.
 > The hub reissues its certificate for the new address on the next start; phones keep trusting the same CA.
 
-### 3. Trust the certificate (once per phone)
+### 3. Trusting the certificate (once per phone)
 
 Camera, motion sensors and service workers need HTTPS, and browsers will not register a service worker behind an untrusted certificate, so without this step there is no offline mode.
 The hub generates its own certificate authority (`hub/.certs/`, never committed) and serves its **public** certificate on a plain-HTTP helper page.
