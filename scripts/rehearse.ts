@@ -46,6 +46,8 @@ const DRIVE_S = Number(opts.seconds);
 const PORT = Number(opts.port);
 const OUT = path.resolve(opts.out!);
 const SPEED_MPS = 7;
+/** The hub binds 127.0.0.1 and its certificate covers it; "localhost" can resolve to ::1 first on CI runners. */
+const HOST = '127.0.0.1';
 const certDir = path.join(root, 'hub', '.certs');
 const defaultVideo = path.join(root, 'model', 'work', 'camera', 'road.y4m');
 const video = opts.video === 'none' ? null : opts.video ? path.resolve(opts.video) : fs.existsSync(defaultVideo) ? defaultVideo : null;
@@ -76,7 +78,7 @@ let hub: ChildProcess | null = null;
 
 function startHub(fresh: boolean): ChildProcess {
   const tsxCli = require.resolve('tsx/cli');
-  const args = [tsxCli, 'hub/src/index.ts', '--port', String(PORT), '--http-port', 'off', '--no-mkcert', '--host', '127.0.0.1',
+  const args = [tsxCli, 'hub/src/index.ts', '--port', String(PORT), '--http-port', 'off', '--no-mkcert', '--host', HOST,
     '--data', path.join(OUT, 'hub-data'), '--quiet', ...(fresh ? ['--fresh'] : []), ...(PIN ? ['--pin', PIN] : [])];
   const child = spawn(process.execPath, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   const out = fs.createWriteStream(path.join(OUT, 'hub.log'), { flags: 'a' });
@@ -103,7 +105,7 @@ function hubGet<T>(urlPath: string): Promise<T> {
   const ca = fs.readFileSync(path.join(certDir, 'lubak-hub-ca.crt'));
   return new Promise((resolve, reject) => {
     const withPin = PIN ? `${urlPath}${urlPath.includes('?') ? '&' : '?'}pin=${PIN}` : urlPath;
-    const req = https.get({ host: 'localhost', port: PORT, path: withPin, ca, timeout: 3000 }, (res) => {
+    const req = https.get({ host: HOST, port: PORT, path: withPin, ca, timeout: 3000 }, (res) => {
       let body = '';
       res.on('data', (c) => (body += c));
       res.on('end', () => {
@@ -129,14 +131,14 @@ async function waitForHub(timeoutMs = 60_000): Promise<void> {
       await sleep(500);
     }
   }
-  throw new Error(`the hub did not answer on https://localhost:${PORT} within ${timeoutMs / 1000} s (see ${path.join(OUT, 'hub.log')})`);
+  throw new Error(`the hub did not answer on https://${HOST}:${PORT} within ${timeoutMs / 1000} s (see ${path.join(OUT, 'hub.log')})`);
 }
 
 /** Connect like a phone that never got the PIN; resolve with the close code the hub sends. */
 function strangerCloseCode(): Promise<number> {
   const ca = fs.readFileSync(path.join(certDir, 'lubak-hub-ca.crt'));
   return new Promise((resolve) => {
-    const ws = new WebSocket(`wss://localhost:${PORT}/ws`, { ca });
+    const ws = new WebSocket(`wss://${HOST}:${PORT}/ws`, { ca });
     const timer = setTimeout(() => {
       ws.terminate();
       resolve(-1);
@@ -204,7 +206,7 @@ async function main(): Promise<void> {
     throw new Error('Playwright is not installed: `npm install`, then `npx playwright install chromium`');
   }
 
-  say(`starting the hub on https://localhost:${PORT} (fresh store, data in ${path.relative(root, OUT)}/hub-data)`);
+  say(`starting the hub on https://${HOST}:${PORT} (fresh store, data in ${path.relative(root, OUT)}/hub-data)`);
   hub = startHub(true);
   await waitForHub();
   const spki = hubSpki();
@@ -230,7 +232,7 @@ async function main(): Promise<void> {
   const A = await phone('A');
   const B = await phone('B');
   const query = new URLSearchParams({ ...(hasModel ? { detector: 'onnx' } : {}), ...(PIN ? { pin: PIN } : {}) }).toString();
-  const url = `https://localhost:${PORT}/${query ? `?${query}` : ''}`;
+  const url = `https://${HOST}:${PORT}/${query ? `?${query}` : ''}`;
   // Without a road video nothing real can be detected; phone B then drives in Demo Mode (scripted detections through the real
   // confirmer, store and sync) so there are hazards to sync, while phone A still runs the real model on the camera.
   const demoB = !video;
@@ -243,7 +245,7 @@ async function main(): Promise<void> {
   // 1. trusted HTTPS + service worker
   for (const p of [A, B]) {
     const t0 = Date.now();
-    await p.page.goto(p === B && demoB ? `https://localhost:${PORT}/?demo=1${PIN ? `&pin=${PIN}` : ''}` : url);
+    await p.page.goto(p === B && demoB ? `https://${HOST}:${PORT}/?demo=1${PIN ? `&pin=${PIN}` : ''}` : url);
     const ready = await waitForRow(p.page, 'Offline ready', /yes, cached|service worker active/, 120_000);
     const secure = await p.page.evaluate(() => window.isSecureContext && location.protocol === 'https:');
     check(`phone ${p.name}: HTTPS without a certificate warning, offline cache ready`, secure && /yes|active/.test(ready),

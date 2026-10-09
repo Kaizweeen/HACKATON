@@ -10,8 +10,10 @@ Sources (both keep their published train / val / test split, so the test images 
              Licence: ODbL v1.0 (attribution + share-alike for the database). Mirror used: gitlab.com/ykristian/potholedataset,
              pinned to commit 54a2c06b. Upstream: github.com/chitholian/Potholes-Detection, universe.roboflow.com/brad-dwyer/pothole-voxrl
     crack    Ultralytics crack-seg (3717 / 200 / 112 images, polygon masks; polygons become boxes). Release asset of
-             github.com/ultralytics/assets, sha256 pinned below. Mostly close-ups of cracked concrete and walls, NOT a camera
-             looking down the road: it teaches what a crack looks like, not how one looks from a handlebar mount.
+             github.com/ultralytics/assets, sha256 pinned below. Licence: Public Domain Mark 1.0 according to Ultralytics' dataset
+             page (docs.ultralytics.com/datasets/segment/crack-seg); originally Roboflow Universe university-bswxt/crack-bphdr.
+             Mostly close-ups of cracked concrete and walls, NOT a camera looking down the road: it teaches what a crack looks
+             like, not how one looks from a handlebar mount.
 
 What this dataset does NOT have: flooded roads (class 2 gets zero examples, so the model never reports one), Philippine roads,
 and frames from the actual phone mount. Read model/RESULTS.md before quoting any number trained on it.

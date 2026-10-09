@@ -189,8 +189,8 @@ Fill in the names. Each owner has a folder they can change freely and a contract
 | 3 | _name_ | **Hub + sync** | `hub/`, `shared/`, `app/src/sync.ts`, `app/src/store.ts` | `shared/` is the agreement between every phone and the hub: change it for everyone, with tests |
 | 4 | _name_ | **Map UI + demo** | `app/src/map.ts`, `ui/`, `style.css`, `demo.ts`, `app/public/tiles/` | Reads hazards from the store only; Demo Mode must keep going through the real pipeline |
 
-**1. Model.** Today: pipeline, checks and notebook exist; no weights, no numbers.
-First: (1) run the notebook on real RDD2022 plus flood images you are licensed to use, and add photos from the actual phone mount on Antipolo roads; (2) export with `model/export_onnx.py`, drop the file in `app/public/models/`, generate the parity reference (`model/tools/parity_ref.py`) and run `npm test`; (3) fill in `model/RESULTS.md` with what *you* measured, choose per-class thresholds from `model/evaluate.py` output, and give them to owner 2.
+**1. Model.** Today: a baseline trained on public pothole and crack photos is committed, with its numbers in `model/RESULTS.md`; no flood data, no local data.
+First: (1) record the phone mount on Antipolo roads and label a few hundred frames (potholes, cracks, flooded and wet-but-passable stretches, plain road); (2) fold them in with `model/datasets.py` (`add_yolo_folder`), retrain (`model/README.md`), export, and run `model/tools/evaluate_onnx.py` on val then test; (3) update `model/RESULTS.md` and the thresholds in `app/src/confirmer.ts`, regenerate the parity fixture, run `npm test` and `npm run rehearse`.
 
 **2. Camera + detection pipeline.** Today: works with the mock and with any contract-conforming ONNX; thresholds are placeholders; untested on real phones.
 First: (1) on a real Android phone read the Debug screen while driving the app against a screen showing road footage: backend, ms per stage, capture fps, GPS accuracy, jolt readings; (2) put owner 1's thresholds into `DEFAULT_CONFIRMER_CONFIG` and calibrate the jolt threshold and boost with real rides on a motorbike and a jeep (`lookaheadM` in `pipeline.ts` is off by default: the camera sees a pothole before the wheel hits it); (3) try Safari on an iPhone: motion permission flow, camera orientation, wake lock, and whether WASM is fast enough there.
@@ -208,7 +208,7 @@ First: (1) render real offline tiles for the demo area (QGIS recipe in `app/publ
 - [ ] `npm install`, `npm test` and `npm run typecheck` are green on the demo laptop, and **`npm run rehearse` passes every check** (two emulated phones, the real hub and model: [`DEMO.md`](DEMO.md)).
 - [ ] `python model/export_onnx.py --verify app/public/models/lubak.onnx` prints OK. Debug will show `ONNX webgpu` or `ONNX wasm`, not MOCK.
 - [ ] If the demo is somewhere other than Antipolo: render tiles for it and trace a demo loop there ([`app/public/tiles/README.md`](app/public/tiles/README.md)).
-- [ ] `npm run build`; the *precache N entries* line (about 52 MB with the model, ~25 MB over the wire thanks to gzip) is fine for the hotspot.
+- [ ] `npm run build`; the *precache N entries* line: about 53 MB (app, model, onnxruntime WASM, tiles), about 32 MB over the wire because the hub gzips the WASM; each phone downloads it once over the hotspot.
 - [ ] Full rehearsal on the real hotspot with at least two phones, including a hub restart and a "Pothole ahead" warning on the second phone.
 - [ ] Fallback: Demo Mode works, and [`docs/demo-mode-fallback.webm`](docs/demo-mode-fallback.webm) plays. Charged phones, power banks, secure mounts.
 
@@ -236,6 +236,16 @@ First: (1) render real offline tiles for the demo area (QGIS recipe in `app/publ
 * A web page cannot keep the camera and GPS running with the screen off or in the background. The phone must stay unlocked in the foreground (the app asks for a screen wake lock where the browser allows it).
 * WebGPU depends on the phone's browser and GPU; WASM is the fallback and is slower (single-threaded: the hub does not enable cross-origin isolation, see the note in `hub/src/hub.ts`). In the rehearsal, WASM on a laptop CPU takes about 130 ms a frame; neither has been timed on a phone yet.
 * This is not a safety system. Do not operate the phone while riding; mount it securely and let a passenger run demos.
+
+## Credits and licences of what the app ships
+
+| part | source | licence / what it asks of you |
+| --- | --- | --- |
+| Map tiles (`app/public/tiles`) | © OpenStreetMap contributors, published by the Overture Maps Foundation, rendered by `app/scripts/offline_tiles.py` | ODbL 1.0: keep the attribution the map shows |
+| Pothole training images | Atikur Rahman Chitholian's pothole dataset (via Roboflow) | ODbL 1.0: the model is a Produced Work; credit the dataset |
+| Crack training images | Roboflow Universe `university-bswxt/crack-bphdr`, packaged by Ultralytics as `crack-seg` | Public Domain Mark 1.0 according to Ultralytics' dataset page |
+| Model architecture, pretrained weights, training code | Ultralytics YOLOv8 (`yolov8n.pt`) | **AGPL-3.0**: `lubak.onnx` is fine-tuned from it, so serving or distributing it to others carries AGPL obligations (or needs an Ultralytics Enterprise licence). This repository has no licence file yet: the owners should choose one with that in mind |
+| Inference runtime, map library | onnxruntime-web, Leaflet | MIT, BSD-2-Clause |
 
 ## Working on the code
 

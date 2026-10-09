@@ -50,6 +50,37 @@ def predict(session: ort.InferenceSession, bgr: np.ndarray) -> list[ev.Box]:
     return [ev.Box(int(c), float(x1), float(y1), float(x2), float(y2), conf=float(s)) for x1, y1, x2, y2, s, c in dets.tolist()]
 
 
+def image_level(rows: list, classes: list[str], thresholds: dict[str, float | None]) -> dict[str, dict[str, float]]:
+    """What the app cares about more than per-box recall: of the photos that show a class, how many get at least one correct box
+    (IoU >= 0.5) at the class threshold; of the photos that do not show it, how many get a box of it anyway (a false alarm)."""
+    out: dict[str, dict[str, float]] = {}
+    for ci, name in enumerate(classes):
+        t = thresholds.get(name)
+        if t is None:
+            continue
+        with_cls = hit = without = false_alarm = 0
+        for preds, truth in rows:
+            mine = [p for p in preds if p.cls == ci and p.conf >= t]
+            gt = [g for g in truth if g.cls == ci]
+            if gt:
+                with_cls += 1
+                tp, _, _ = ev.count_matches(mine, gt)
+                hit += 1 if tp > 0 else 0
+            else:
+                without += 1
+                false_alarm += 1 if mine else 0
+        out[name] = {
+            "threshold": t,
+            "images_with_class": with_cls,
+            "detected_in": hit,
+            "image_recall": hit / with_cls if with_cls else float("nan"),
+            "images_without_class": without,
+            "false_alarm_images": false_alarm,
+            "false_alarm_rate": false_alarm / without if without else float("nan"),
+        }
+    return out
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--onnx", type=Path, default=ROOT / "app" / "public" / "models" / "lubak.onnx")
@@ -86,11 +117,16 @@ def main() -> None:
             at[name] = row
             print(f"\n{name} at the threshold chosen on {args.use} ({value}): precision {row['precision']:.3f}, recall {row['recall']:.3f}  (TP {int(row['tp'])}, FP {int(row['fp'])}, FN {int(row['fn'])})")
         result["at_chosen_thresholds"] = at
+        result["image_level"] = image_level(rows, CLASSES, chosen)
+        for name, r in result["image_level"].items():
+            print(f"{name}: found in {r['detected_in']} of {r['images_with_class']} photos that show one ({r['image_recall']:.1%}); "
+                  f"a false {name} box in {r['false_alarm_images']} of {r['images_without_class']} photos without one ({r['false_alarm_rate']:.1%})")
     elif args.split == "val":
         chosen = {name: ev.pick_threshold(rows_, args.min_precision) for name, rows_ in table.items()}
         print(f"\nlowest threshold with precision >= {args.min_precision}: {chosen}  (None: no threshold reaches it, or no data)")
         (args.out / "thresholds.json").write_text(json.dumps({"min_precision": args.min_precision, "thresholds": chosen}, indent=2))
         result["chosen"] = chosen
+        result["image_level"] = image_level(rows, CLASSES, chosen)
     (args.out / f"{args.split}.json").write_text(json.dumps(result, indent=2))
     print(f"\nwrote {args.out / f'{args.split}.json'}")
 

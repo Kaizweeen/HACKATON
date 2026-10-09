@@ -85,8 +85,8 @@ export class HazardAlerter {
   /** Feed one fix and the hazards the phone knows; returns the warning to raise now, if any. */
   update(fix: GeoFix, hazards: readonly Hazard[]): HazardAlert | null {
     const cfg = this.config;
+    if (fix.accuracy > cfg.maxAccuracyM) return null; // and it does not become the "previous" fix for the direction either
     const motion = this.motion(fix);
-    if (fix.accuracy > cfg.maxAccuracyM) return null;
 
     for (const [id, spot] of this.warned) if (haversineMeters(fix, spot) > cfg.rearmDistanceM) this.warned.delete(id);
 

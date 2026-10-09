@@ -40,7 +40,7 @@ export const DEMO_ENCOUNTERS: readonly DemoEncounter[] = [
   { at: 16, cls: 'pothole', confidence: 0.72, frames: 2, expect: 'reject' }, // strong but only 2 frames
   { at: 20, cls: 'flooded_road', confidence: 0.77, frames: 10, expect: 'confirm' },
   { at: 27, cls: 'pothole', confidence: 0.79, frames: 5, jolt: { delay: 0.7, magnitude: 6.1 }, expect: 'confirm' },
-  { at: 32, cls: 'crack', confidence: 0.3, frames: 7, expect: 'reject' }, // long but below the crack threshold
+  { at: 32, cls: 'crack', confidence: 0.2, frames: 7, expect: 'reject' }, // long but below any crack threshold (the app's floor is 0.25)
   { at: 36, cls: 'crack', confidence: 0.58, frames: 6, expect: 'confirm' },
   { at: 42, cls: 'pothole', confidence: 0.9, frames: 7, jolt: { delay: 0.9, magnitude: 8.4 }, expect: 'confirm' },
   { at: 48, cls: 'flooded_road', confidence: 0.69, frames: 9, expect: 'confirm' },
