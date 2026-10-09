@@ -235,6 +235,10 @@ async function main(): Promise<void> {
   // confirmer, store and sync) so there are hazards to sync, while phone A still runs the real model on the camera.
   const demoB = !video;
   if (demoB) say('phone B runs Demo Mode (no road video), phone A the real camera pipeline');
+  // One phone drives FOLLOW_S behind the other along the same street, so it reaches the leader's hazards after they were
+  // reported: it must be warned about them ("Pothole ahead"). With a road video B follows A; without one, B (Demo Mode) leads.
+  const FOLLOW_S = 15;
+  const follower = demoB ? A : B;
 
   // 1. trusted HTTPS + service worker
   for (const p of [A, B]) {
@@ -272,7 +276,7 @@ async function main(): Promise<void> {
   say(`driving for ${DRIVE_S} s at ${SPEED_MPS * 3.6} km/h; the hub goes down from ${outageFrom} s to ${outageTo} s`);
   const driveStart = Date.now();
   for (let s = 0; s <= DRIVE_S; s++) {
-    for (const [p, lag] of [[A, 0], [B, 3]] as const) {
+    for (const [p, lag] of [[A, follower === A ? FOLLOW_S : 0], [B, follower === B ? FOLLOW_S : 0]] as const) {
       const at = pointAlongPath(route, SPEED_MPS * Math.max(0, s - lag), true);
       await p.context.setGeolocation({ latitude: at.lat, longitude: at.lon, accuracy: 5 });
     }
@@ -325,7 +329,12 @@ async function main(): Promise<void> {
   check('nothing left waiting to sync, both reconnected', rowsA['Waiting to sync'] === '0' && rowsB['Waiting to sync'] === '0' && rowsA['State'] === 'connected' && rowsB['State'] === 'connected',
     `waiting A ${rowsA['Waiting to sync']}, B ${rowsB['Waiting to sync']}; state A ${rowsA['State']}, B ${rowsB['State']}`);
   const shared = hubHazards.filter((h) => h.deviceIds.length >= 2).length;
-  say(`hazards confirmed by both phones: ${shared} of ${hubHazards.length} (they drive 3 s apart, so only some coincide)`);
+  say(`hazards confirmed by both phones: ${shared} of ${hubHazards.length} (they drive ${FOLLOW_S} s apart and film the same video at the same time, so few coincide)`);
+  const followerRows = follower === A ? liveA : liveB;
+  const warned = num(followerRows['Hazard warnings']);
+  const leaderFound = follower === A ? num(liveB['Confirmed']) : confirmedA;
+  check(`phone ${follower.name}, ${FOLLOW_S} s behind, was warned about hazards ahead`, leaderFound > 0 ? warned > 0 : null,
+    leaderFound > 0 ? `Hazard warnings: ${followerRows['Hazard warnings']}` : 'the leading phone confirmed nothing, so there was nothing to warn about');
   const duringOutage = hubHazards.filter((h) => h.firstSeen >= outageStartedAt && h.firstSeen <= outageEndedAt).length;
   check('hazards confirmed while the hub was down reached it afterwards', duringOutage > 0 ? true : null,
     duringOutage > 0

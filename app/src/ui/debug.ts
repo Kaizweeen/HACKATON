@@ -90,6 +90,7 @@ export class DebugScreen {
           { label: 'Detections seen', value: () => String(stats()?.detections ?? 0) },
           { label: 'Confirmed', value: () => `${stats()?.confirmed ?? 0} (${stats()?.boosted ?? 0} boosted by a jolt)` },
           { label: 'Seen but not recorded', value: () => `${stats()?.noFix ?? 0} (no usable GPS fix)`, tone: () => ((stats()?.noFix ?? 0) > 0 ? 'warn' : undefined) },
+          { label: 'Hazard warnings', value: () => { const a = rig()?.alerts.stats; return a ? `${a.warnings}${a.last ? ` · last: ${a.last.hazard.cls} at ${Math.round(a.last.distanceM)} m` : ''}` : '–'; } },
           {
             label: 'Confirmer streaks',
             value: () => {
