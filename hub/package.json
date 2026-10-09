@@ -1,0 +1,23 @@
+{
+  "name": "@lubak/hub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local HTTPS + WebSocket hub: serves the built PWA and merges / relays hazards between phones over a hotspot, no internet needed.",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "fake-device": "tsx tools/fake-device.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@lubak/shared": "*",
+    "express": "^5.2.1",
+    "selfsigned": "^5.5.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/ws": "^8.5.0"
+  }
+}
