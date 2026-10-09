@@ -1,11 +1,15 @@
-# `lubak.onnx` goes here
+# `lubak.onnx`
 
-**Drop the trained model at `app/public/models/lubak.onnx`.** It is served as `/models/lubak.onnx`, precached by the
-service worker (so the app works with no connection) and loaded by `app/src/detector.ts`.
+**`app/public/models/lubak.onnx` is the trained model** (`lubak_public_v1`: YOLOv8n fine-tuned on public pothole and crack
+photos, sha256 `0e91a786...`). How it was made and what it measured: [`model/RESULTS.md`](../../../model/RESULTS.md). It is
+served as `/models/lubak.onnx`, precached by the service worker (so the app works with no connection) and loaded by
+`app/src/detector.ts`.
 
-There is intentionally **no file with that name in the repo yet**. Until it exists the app runs the `MockDetector`
-(random boxes) and says so with a red **MOCK** badge on the Drive screen. Never commit a dummy or test model under this name:
-the app would present its output as real detections.
+If the file is missing or unreadable the app falls back to the `MockDetector` (random boxes) and says so with a red **MOCK**
+badge on the Drive screen. Never commit a dummy or test model under this name: the app would present its output as real
+detections. Replacing it means: retrain, export with `model/export_onnx.py` (it writes here and verifies the contract), re-run
+`model/tools/evaluate_onnx.py`, update `model/RESULTS.md` and the thresholds in `app/src/confirmer.ts`, regenerate
+`app/test/fixtures/parity` with `model/tools/parity_ref.py`.
 
 ## What the app expects from the file
 
@@ -21,8 +25,8 @@ The app checks the output shape on load and fails loudly (not silently) if the c
 
 ## How to produce it
 
-See [`model/README.md`](../../../model/README.md): fine-tune YOLOv8n on RDD2022 plus flood images, then run
-`model/export_onnx.py`, which writes the file straight to this folder.
+See [`model/README.md`](../../../model/README.md): it reproduces this model from public data on a laptop, and explains how to
+add your own (road footage from the phone mount, flood images), then `model/export_onnx.py` writes the file straight here.
 
 ## Handy overrides while testing
 

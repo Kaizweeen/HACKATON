@@ -266,7 +266,7 @@ async function main(): Promise<void> {
   }
   const detector = await waitForRow(A.page, 'In use', /onnx|mock/, 90_000);
   const isolation = await A.page.evaluate(() => ({ isolated: crossOriginIsolated, threads: navigator.hardwareConcurrency }));
-  say(`cross-origin isolated: ${isolation.isolated} (WASM can use threads), ${isolation.threads} logical CPUs`);
+  say(`cross-origin isolated: ${isolation.isolated} (${isolation.isolated ? 'WASM may use threads' : 'WASM runs single-threaded'}), ${isolation.threads} logical CPUs`);
   await tab(A.page, 'Drive');
   if (hasModel) check('real detector (not MOCK)', /^onnx \/ (webgpu|wasm)/.test(detector), `In use: ${detector}`);
   else check('real detector (not MOCK)', false, `app/dist/models/lubak.onnx is missing, so the app uses ${detector}`);

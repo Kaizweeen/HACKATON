@@ -21,7 +21,7 @@ The full flowchart and architecture, every box and arrow mapped to the code that
 
 **Works, and is checked** by 330+ automated tests and by `npm run rehearse` (two emulated phones in Chromium against the real hub and the real model, see [`DEMO.md`](DEMO.md)):
 
-* **Detection on the phone.** `app/public/models/lubak.onnx` is a YOLOv8n trained on public pothole and crack photos; how it was trained and what it measured on held-out photos is in [`model/RESULTS.md`](model/RESULTS.md) (MODEL_SUMMARY).
+* **Detection on the phone.** `app/public/models/lubak.onnx` is a YOLOv8n trained on public pothole and crack photos; how it was trained and what it measured on held-out photos is in [`model/RESULTS.md`](model/RESULTS.md) (on 179 held-out public photos: mAP50 0.69; a pothole is found in 62 of 67 photos that show one, at a per-box precision of 0.81; cracks are weaker).
   onnxruntime-web runs it on WebGPU, or WASM where WebGPU is missing; a parity test proves the app decodes the model's raw output exactly as Ultralytics does.
 * **Confirmation.** 3 consecutive frames above a per-class threshold chosen on validation data, a usable GPS fix, and a confidence boost when the accelerometer feels the bump.
 * **Sharing without internet.** IndexedDB store with an offline queue; the laptop hub (HTTPS + WebSocket) merges and relays hazards, keeps a snapshot, expires old ones; an optional event PIN keeps strangers on the hotspot out.

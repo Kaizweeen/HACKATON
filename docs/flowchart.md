@@ -158,10 +158,11 @@ Anything that needs a real browser is marked **browser**: it was checked by jour
 5. **Demo Mode replaces more than the detector.** It also replaces the camera frames, GPS and jolts, so two phones confirm the same places along the Antipolo route and the map shows ×2. Everything after the detector is the real confirmer, store, sync and map.
 6. **`hello` carries a content digest.** Summary entries are `{id, lastSeen, d}`, not just id and lastSeen: `lastSeen` alone cannot reveal a missing confirmation. The reasoning and the convergence tests are in [`shared/README.md`](../shared/README.md).
 7. **"Self-signed TLS".** The hub makes its own certificate authority and signs a certificate with it (so a phone trusts the CA once), or uses mkcert when that is installed.
-8. **`lubak.onnx` does not exist yet.** The box is real and wired; the weights are still to be trained, so the app shows a red MOCK badge until the file is added. No accuracy figure exists anywhere in the repo.
+8. **`lubak.onnx` is a public-data baseline.** The box is real, wired and filled: YOLOv8n fine-tuned on public pothole and crack photos, with what it measured on held-out photos in [`model/RESULTS.md`](../model/RESULTS.md). It has never seen a flooded road or a Philippine road, so the `flooded_road` class never fires. If the file is missing the app shows a red MOCK badge instead of pretending.
 
 ## 5. What this proves, and what it does not
 
 * The tests run the **real app and hub code** in Node. Replaced by fakes: the camera, the sensors, Leaflet, IndexedDB (an in-memory backend with the same interface) and the neural network itself (a canned YOLOv8-shaped output; the real graph was exercised separately in a browser).
 * To check the tests have teeth, each behaviour above was broken on purpose, one at a time (the confirmation count, the reconnect timer, the hub's merge, the TLS server, the NMS, and more): every one made at least one flowchart test fail, and the files were restored byte for byte.
-* **Not verified:** any of this on a real phone, in a real vehicle, on a real hotspot, with a real GPU's WebGPU, or on iOS; and nothing about how well a trained model will detect anything, because there is none.
+* `npm run rehearse` adds the browser half: two emulated phones in Chromium with the real model on a fake camera fed by held-out road photos, the real hub (with an outage), the hazard-ahead warning and an airplane-mode reload. Its last report is in [`docs/rehearsal/report.md`](rehearsal/report.md).
+* **Not verified:** any of this on a real phone, in a real vehicle, on a real hotspot, with a real GPU's WebGPU, or on iOS; and how well the model detects hazards on Antipolo roads from a handlebar mount (its numbers are on public photos).
